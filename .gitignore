@@ -1,0 +1,19 @@
+# Binaries
+src/test_uffd
+*.o
+*.out
+
+# Python
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Planning
+.planning/STATE.md.old
