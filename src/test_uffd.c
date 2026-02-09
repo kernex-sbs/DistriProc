@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <poll.h>
 #include <pthread.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -37,6 +38,12 @@ static void *fault_handler_thread(void *arg) {
         struct pollfd pollfd;
         pollfd.fd = uffd;
         pollfd.events = POLLIN;
+
+        int res = poll(&pollfd, 1, -1);
+        if (res == -1) {
+            perror("poll");
+            exit(1);
+        }
 
         nread = read(uffd, &msg, sizeof(msg));
         if (nread == 0) {
@@ -87,9 +94,10 @@ int main(int argc, char *argv[]) {
     page_size = sysconf(_SC_PAGE_SIZE);
 
     /* Create userfaultfd object */
-    uffd = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK);
+    uffd = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK | UFFD_USER_MODE_ONLY);
     if (uffd == -1) {
         perror("syscall-userfaultfd");
+        fprintf(stderr, "Try: sudo sysctl -w vm.unprivileged_userfaultfd=1\n");
         exit(1);
     }
 
