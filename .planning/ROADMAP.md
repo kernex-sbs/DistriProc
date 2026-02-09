@@ -16,7 +16,7 @@ DistriProc decouples memory from execution, allowing Linux processes to start im
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Basic userfaultfd PoC** - Verify local page fault handling and zero-page serving
+- [x] **Phase 1: Basic userfaultfd PoC** - Verify local page fault handling and zero-page serving
 - [ ] **Phase 2: TCP Transport** - Implement remote page fetching over TCP
 - [ ] **Phase 3: CRIU Integration** - Restore process with lazy-pages from remote source
 - [ ] **Phase 4: Performance Tuning** - Implement prefetching and hot/cold tracking
@@ -79,7 +79,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Basic userfaultfd PoC | 0/1 | Not started | - |
+| 1. Basic userfaultfd PoC | 1/1 | Complete | 2026-02-09 |
 | 2. TCP Transport | 0/1 | Not started | - |
 | 3. CRIU Integration | 0/2 | Not started | - |
 | 4. Performance Tuning | 0/2 | Not started | - |
