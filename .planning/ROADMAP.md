@@ -17,7 +17,7 @@ DistriProc decouples memory from execution, allowing Linux processes to start im
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Basic userfaultfd PoC** - Verify local page fault handling and zero-page serving
-- [ ] **Phase 2: TCP Transport** - Implement remote page fetching over TCP
+- [x] **Phase 2: TCP Transport** - Implement remote page fetching over TCP
 - [ ] **Phase 3: CRIU Integration** - Restore process with lazy-pages from remote source
 - [ ] **Phase 4: Performance Tuning** - Implement prefetching and hot/cold tracking
 - [ ] **Phase 5: Evaluation** - Benchmark against CRIU migration (Redis/inference)
@@ -40,7 +40,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 02-01: Implement `page_server.py` and update C client to fetch pages over network
+- [x] 02-01: Implement `page_server.py` and update C client to fetch pages over network
 
 ### Phase 3: CRIU Integration
 **Goal**: Restore a real process (Redis) using CRIU lazy-pages connected to our page server.
@@ -80,7 +80,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Basic userfaultfd PoC | 1/1 | Complete | 2026-02-09 |
-| 2. TCP Transport | 0/1 | Not started | - |
+| 2. TCP Transport | 1/1 | Complete | 2026-02-09 |
 | 3. CRIU Integration | 0/2 | Not started | - |
 | 4. Performance Tuning | 0/2 | Not started | - |
 | 5. Evaluation | 0/1 | Not started | - |

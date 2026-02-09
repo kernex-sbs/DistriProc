@@ -18,7 +18,7 @@ The ability to start a process immediately (<1s) and keep it running without eve
 ### Active
 
 - [ ] **Week 1 PoC**: Minimal `test_uffd.c` demonstrating userfaultfd trapping faults and serving pages.
-- [ ] **TCP Transport**: Implement `page_server.py` and C client to fetch pages over network.
+- [x] **TCP Transport**: Implement `page_server.py` and C client to fetch pages over network.
 - [ ] **CRIU Integration**: Restore a process (Redis) with lazy-pages using a remote source.
 - [ ] **Single-Writer Consistency**: Implement write-through to source node for correctness.
 
