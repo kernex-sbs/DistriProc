@@ -1,5 +1,6 @@
 # Binaries
 src/test_uffd
+src/test_uffd_tcp
 *.o
 *.out
 
