@@ -17,9 +17,11 @@ The ability to start a process immediately (<1s) and keep it running without eve
 
 ### Active
 
-- [ ] **Week 1 PoC**: Minimal `test_uffd.c` demonstrating userfaultfd trapping faults and serving pages.
+- [x] **Week 1 PoC**: Minimal `test_uffd.c` demonstrating userfaultfd trapping faults and serving pages.
 - [x] **TCP Transport**: Implement `page_server.py` and C client to fetch pages over network.
-- [ ] **CRIU Integration**: Restore a process (Redis) with lazy-pages using a remote source.
+- [x] **CRIU Integration**: Restore a process with lazy-pages using custom uffd handler + TCP page server.
+- [x] **Performance Tuning**: Prefetching (sequential + stride) and hot/cold page eager fetch.
+- [ ] **Evaluation**: Benchmark against CRIU migration with real workloads (Redis, PyTorch).
 - [ ] **Single-Writer Consistency**: Implement write-through to source node for correctness.
 
 ### Out of Scope
@@ -32,10 +34,11 @@ The ability to start a process immediately (<1s) and keep it running without eve
 
 ## Context
 
-- **Environment**: Developing on Arch Linux (Kernel 6.18.3).
+- **Environment**: Developing on Arch Linux (Kernel 6.18.7).
 - **Dependencies**:
   - `userfaultfd` is supported in current kernel.
-  - `criu` is currently missing and needs installation/compilation.
+  - `criu` is installed and working.
+  - `pycriu` Python library for reading CRIU image files.
 - **Research Basis**: Based on "DistriProc: Process-Level Remote Paging for Containers" proposal.
 - **Key Metric**: Time-to-first-request < 1s (vs CRIU's 30s+).
 
@@ -54,4 +57,4 @@ The ability to start a process immediately (<1s) and keep it running without eve
 | **Arch Linux** | Using current environment instead of strict Ubuntu 24.04 from proposal (Kernel is newer, should work). | — Pending |
 
 ---
-*Last updated: 2026-02-09 after initialization*
+*Last updated: 2026-02-13 after Phase 4 completion*

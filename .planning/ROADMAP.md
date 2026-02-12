@@ -18,8 +18,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Basic userfaultfd PoC** - Verify local page fault handling and zero-page serving
 - [x] **Phase 2: TCP Transport** - Implement remote page fetching over TCP
-- [ ] **Phase 3: CRIU Integration** - Restore process with lazy-pages from remote source
-- [ ] **Phase 4: Performance Tuning** - Implement prefetching and hot/cold tracking
+- [x] **Phase 3: CRIU Integration** - Restore process with lazy-pages from remote source
+- [x] **Phase 4: Performance Tuning** - Implement prefetching and hot/cold tracking
 - [ ] **Phase 5: Evaluation** - Benchmark against CRIU migration (Redis/inference)
 
 ## Phase Details
@@ -31,7 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 1 plan
 
 Plans:
-- [ ] 01-01: Implement `test_uffd.c` to trap faults and serve zero-filled pages locally
+- [x] 01-01: Implement `test_uffd.c` to trap faults and serve zero-filled pages locally
 
 ### Phase 2: TCP Transport
 **Goal**: Fetch pages from a remote Python server over TCP instead of generating them locally.
@@ -50,8 +50,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: Install/compile CRIU and verify basic checkpoint/restore
-- [ ] 03-02: Integrate custom uffd handler with CRIU restore process
+- [x] 03-01: Install/compile CRIU and verify basic checkpoint/restore
+- [x] 03-02: Integrate custom uffd handler with CRIU restore process
 
 ### Phase 4: Performance Tuning
 **Goal**: Optimize page fetching to handle latency.
@@ -60,8 +60,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: Implement sequential and stride prefetching
-- [ ] 04-02: Implement hot/cold page tracking via smaps
+- [x] 04-01: Implement sequential and stride prefetching
+- [x] 04-02: Implement hot/cold page tracking via smaps
 
 ### Phase 5: Evaluation
 **Goal**: Measure time-to-first-request and throughput.
@@ -81,6 +81,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Basic userfaultfd PoC | 1/1 | Complete | 2026-02-09 |
 | 2. TCP Transport | 1/1 | Complete | 2026-02-09 |
-| 3. CRIU Integration | 0/2 | Not started | - |
-| 4. Performance Tuning | 0/2 | Not started | - |
+| 3. CRIU Integration | 2/2 | Complete | 2026-02-12 |
+| 4. Performance Tuning | 2/2 | Complete | 2026-02-13 |
 | 5. Evaluation | 0/1 | Not started | - |
