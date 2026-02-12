@@ -20,8 +20,8 @@ $(BINDIR)/test_uffd_tcp: $(SRCDIR)/test_uffd_tcp.c
 $(BINDIR)/test_loop: $(SRCDIR)/test_loop.c
 	$(CC) $(CFLAGS) -o $@ $<
 
-$(BINDIR)/lazy_handler: $(SRCDIR)/lazy_handler.c
-	$(CC) $(CFLAGS) -o $@ $<
+$(BINDIR)/lazy_handler: $(SRCDIR)/lazy_handler.c $(SRCDIR)/hashset.h
+	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
 test: all
 	@bash tests/run_tests.sh

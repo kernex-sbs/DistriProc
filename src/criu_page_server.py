@@ -6,6 +6,9 @@ over TCP using the same protocol as page_server.py:
   - Request:  8 bytes (uint64 virtual address)
   - Response: 4096 bytes (page data, or zeros if not in pagemap)
 
+Supports pipelined requests (multiple 8-byte requests before reading
+responses) and multiple concurrent clients via threading.
+
 Usage:
     criu_page_server.py --images-dir DIR [--port PORT]
 """
@@ -16,6 +19,7 @@ import os
 import socket
 import struct
 import sys
+import threading
 
 from pycriu import images as criu_images
 
@@ -68,15 +72,24 @@ def build_page_map(images_dir):
     return page_map
 
 
-def handle_client(conn, addr, page_map):
+def recv_exact(conn, n):
+    """Receive exactly n bytes from conn, looping until complete."""
+    buf = b""
+    while len(buf) < n:
+        chunk = conn.recv(n - len(buf))
+        if not chunk:
+            return None
+        buf += chunk
+    return buf
+
+
+def handle_client(conn, addr, page_map, fd_cache):
+    """Handle a single client connection with pipelined request support."""
     print(f"Connected by {addr}")
     try:
         while True:
-            data = conn.recv(8)
-            if not data:
-                break
-            if len(data) != 8:
-                print(f"Incomplete request: {len(data)} bytes")
+            data = recv_exact(conn, 8)
+            if data is None:
                 break
 
             fault_addr = struct.unpack("Q", data)[0]
@@ -85,24 +98,30 @@ def handle_client(conn, addr, page_map):
 
             if page_addr in page_map:
                 pages_path, offset = page_map[page_addr]
-                with open(pages_path, "rb") as pf:
-                    pf.seek(offset)
-                    page_data = pf.read(PAGE_SIZE)
+                # Use cached file handle
+                if pages_path not in fd_cache:
+                    fd_cache[pages_path] = open(pages_path, "rb")
+                pf = fd_cache[pages_path]
+                pf.seek(offset)
+                page_data = pf.read(PAGE_SIZE)
                 if len(page_data) != PAGE_SIZE:
                     print(f"WARNING: Short read for {page_addr:#x}: {len(page_data)} bytes")
                     page_data = page_data.ljust(PAGE_SIZE, b"\x00")
-                print(f"Served page {page_addr:#x} from {os.path.basename(pages_path)}+{offset:#x}")
             else:
                 page_data = b"\x00" * PAGE_SIZE
-                print(f"Served zero page for {page_addr:#x} (not in pagemap)")
 
             conn.sendall(page_data)
 
     except ConnectionResetError:
-        print("Connection reset by peer")
+        print(f"Connection reset by {addr}")
+    except BrokenPipeError:
+        print(f"Broken pipe from {addr}")
     finally:
         conn.close()
-        print("Connection closed")
+        # Close cached file handles for this client thread
+        for fh in fd_cache.values():
+            fh.close()
+        print(f"Connection closed from {addr}")
 
 
 def main():
@@ -127,7 +146,14 @@ def main():
 
         while True:
             conn, addr = s.accept()
-            handle_client(conn, addr, page_map)
+            # Each client in its own thread (needed for eager fetch + fault handler)
+            fd_cache = {}  # per-thread file handle cache
+            t = threading.Thread(
+                target=handle_client,
+                args=(conn, addr, page_map, fd_cache),
+                daemon=True,
+            )
+            t.start()
 
 
 if __name__ == "__main__":
