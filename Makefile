@@ -5,7 +5,7 @@ LDFLAGS = -pthread
 SRCDIR = src
 BINDIR = src
 
-TARGETS = $(BINDIR)/test_uffd $(BINDIR)/test_uffd_tcp $(BINDIR)/test_loop
+TARGETS = $(BINDIR)/test_uffd $(BINDIR)/test_uffd_tcp $(BINDIR)/test_loop $(BINDIR)/lazy_handler
 
 .PHONY: all test clean
 
@@ -18,6 +18,9 @@ $(BINDIR)/test_uffd_tcp: $(SRCDIR)/test_uffd_tcp.c
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
 $(BINDIR)/test_loop: $(SRCDIR)/test_loop.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+$(BINDIR)/lazy_handler: $(SRCDIR)/lazy_handler.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 test: all

@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""CRIU image-aware TCP page server.
+
+Reads CRIU dump images (pagemap-*.img, pages-*.img) and serves pages
+over TCP using the same protocol as page_server.py:
+  - Request:  8 bytes (uint64 virtual address)
+  - Response: 4096 bytes (page data, or zeros if not in pagemap)
+
+Usage:
+    criu_page_server.py --images-dir DIR [--port PORT]
+"""
+
+import argparse
+import glob
+import os
+import socket
+import struct
+import sys
+
+from pycriu import images as criu_images
+
+PAGE_SIZE = 4096
+
+
+def build_page_map(images_dir):
+    """Parse pagemap-*.img files and build vaddr -> (pages_file, file_offset) map.
+
+    CRIU pagemap format:
+    - Header: pagemap_head with pages_id (identifies which pages-N.img to read)
+    - Entries: sequential pagemap_entry with vaddr + nr_pages
+    - Pages are stored sequentially in pages-N.img in the same order as entries
+    """
+    page_map = {}  # vaddr -> (pages_file_path, file_offset)
+
+    pagemap_files = sorted(glob.glob(os.path.join(images_dir, "pagemap-*.img")))
+    if not pagemap_files:
+        print(f"ERROR: No pagemap-*.img files found in {images_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    for pmf in pagemap_files:
+        with open(pmf, "rb") as f:
+            pm = criu_images.load(f)
+
+        pages_id = pm["entries"][0]["pages_id"]
+        pages_path = os.path.join(images_dir, f"pages-{pages_id}.img")
+
+        if not os.path.exists(pages_path):
+            print(f"WARNING: {pages_path} not found, skipping", file=sys.stderr)
+            continue
+
+        # Walk entries (skip first entry which is the header)
+        file_offset = 0
+        for entry in pm["entries"][1:]:
+            vaddr = entry["vaddr"]
+            nr_pages = entry.get("nr_pages", entry.get("compat_nr_pages", 1))
+
+            # If pages are in parent image, skip (no data in this pages file)
+            if entry.get("in_parent", False):
+                continue
+
+            for p in range(nr_pages):
+                addr = vaddr + p * PAGE_SIZE
+                page_map[addr] = (pages_path, file_offset)
+                file_offset += PAGE_SIZE
+
+        print(f"Loaded {pmf}: pages_id={pages_id}, {len(page_map)} pages mapped")
+
+    return page_map
+
+
+def handle_client(conn, addr, page_map):
+    print(f"Connected by {addr}")
+    try:
+        while True:
+            data = conn.recv(8)
+            if not data:
+                break
+            if len(data) != 8:
+                print(f"Incomplete request: {len(data)} bytes")
+                break
+
+            fault_addr = struct.unpack("Q", data)[0]
+            # Align to page boundary
+            page_addr = fault_addr & ~(PAGE_SIZE - 1)
+
+            if page_addr in page_map:
+                pages_path, offset = page_map[page_addr]
+                with open(pages_path, "rb") as pf:
+                    pf.seek(offset)
+                    page_data = pf.read(PAGE_SIZE)
+                if len(page_data) != PAGE_SIZE:
+                    print(f"WARNING: Short read for {page_addr:#x}: {len(page_data)} bytes")
+                    page_data = page_data.ljust(PAGE_SIZE, b"\x00")
+                print(f"Served page {page_addr:#x} from {os.path.basename(pages_path)}+{offset:#x}")
+            else:
+                page_data = b"\x00" * PAGE_SIZE
+                print(f"Served zero page for {page_addr:#x} (not in pagemap)")
+
+            conn.sendall(page_data)
+
+    except ConnectionResetError:
+        print("Connection reset by peer")
+    finally:
+        conn.close()
+        print("Connection closed")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="CRIU image-aware TCP page server")
+    parser.add_argument("--images-dir", required=True, help="CRIU images directory")
+    parser.add_argument("--port", type=int, default=9999, help="TCP port (default: 9999)")
+    parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
+    args = parser.parse_args()
+
+    if not os.path.isdir(args.images_dir):
+        print(f"ERROR: {args.images_dir} is not a directory", file=sys.stderr)
+        sys.exit(1)
+
+    page_map = build_page_map(args.images_dir)
+    print(f"Total pages indexed: {len(page_map)}")
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((args.host, args.port))
+        s.listen()
+        print(f"Page server listening on {args.host}:{args.port}")
+
+        while True:
+            conn, addr = s.accept()
+            handle_client(conn, addr, page_map)
+
+
+if __name__ == "__main__":
+    main()
