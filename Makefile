@@ -7,7 +7,7 @@ BINDIR = src
 
 TARGETS = $(BINDIR)/test_uffd $(BINDIR)/test_uffd_tcp $(BINDIR)/test_loop $(BINDIR)/lazy_handler
 
-.PHONY: all test clean
+.PHONY: all test clean bench bench-quick report
 
 all: $(TARGETS)
 
@@ -25,6 +25,15 @@ $(BINDIR)/lazy_handler: $(SRCDIR)/lazy_handler.c $(SRCDIR)/hashset.h
 
 test: all
 	@bash tests/run_tests.sh
+
+bench: all
+	sudo bash eval/bench.sh --output-dir eval/results
+
+bench-quick: all
+	sudo bash eval/bench.sh --workloads test_loop --iterations 2 --output-dir eval/results
+
+report:
+	python3 eval/report.py --input eval/results/results.csv --output eval/results/report.md
 
 clean:
 	rm -f $(TARGETS)
