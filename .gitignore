@@ -2,6 +2,7 @@
 src/test_uffd
 src/test_uffd_tcp
 src/test_loop
+src/lazy_handler
 *.o
 *.out
 
