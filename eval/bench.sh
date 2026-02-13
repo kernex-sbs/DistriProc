@@ -11,6 +11,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
+# When running under sudo, include the invoking user's Python packages
+if [ -n "${SUDO_USER:-}" ]; then
+    USER_SITE=$(sudo -u "$SUDO_USER" python3 -m site --user-site 2>/dev/null || true)
+    if [ -n "$USER_SITE" ] && [ -d "$USER_SITE" ]; then
+        export PYTHONPATH="${USER_SITE}${PYTHONPATH:+:$PYTHONPATH}"
+    fi
+fi
+
 # ── Defaults ────────────────────────────────────────────────────────────────
 
 WORKLOADS="test_loop,redis,pytorch"
