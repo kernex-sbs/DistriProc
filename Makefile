@@ -7,7 +7,7 @@ BINDIR = src
 
 TARGETS = $(BINDIR)/test_uffd $(BINDIR)/test_uffd_tcp $(BINDIR)/test_loop $(BINDIR)/lazy_handler
 
-.PHONY: all test clean bench bench-quick report
+.PHONY: all test clean bench bench-quick report docs
 
 all: $(TARGETS)
 
@@ -34,6 +34,10 @@ bench-quick: all
 
 report:
 	python3 eval/report.py --input eval/results/results.csv --output eval/results/report.md
+
+docs: report
+	@echo "Reports: eval/results/report.md"
+	@echo "Evaluation: docs/evaluation.md"
 
 clean:
 	rm -f $(TARGETS)
