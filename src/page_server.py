@@ -1,4 +1,4 @@
-import socket
+import asyncio
 import struct
 import sys
 
@@ -6,20 +6,35 @@ HOST = '127.0.0.1'
 PORT = 9999
 PAGE_SIZE = 4096
 
-def handle_client(conn, addr):
+async def handle_client(reader, writer):
+    addr = writer.get_extra_info('peername')
     print(f"Connected by {addr}")
+
+    response_queue = asyncio.Queue()
+
+    async def write_loop():
+        try:
+            while True:
+                item = await response_queue.get()
+                if item is None:
+                    break
+                response, fill_char = item
+                writer.write(response)
+                await writer.drain()
+                print(f"Sent {len(response)} bytes (filled with {fill_char})")
+        except ConnectionError:
+            pass
+
+    writer_task = asyncio.create_task(write_loop())
+
     try:
         while True:
-            # Expecting 8 bytes (uint64_t) representing the page index or address
-            data = conn.recv(8)
-            if not data:
+            try:
+                # Expecting 8 bytes (uint64_t) representing the page index or address
+                data = await reader.readexactly(8)
+            except asyncio.IncompleteReadError:
                 break
-
-            if len(data) != 8:
-                print(f"Received incomplete request: {len(data)} bytes")
-                break
-
-            # Unpack the page index (though for this PoC we might just ignore it and return a pattern)
+            
             page_idx = struct.unpack('Q', data)[0]
             print(f"Request for page index: {page_idx}")
 
@@ -29,25 +44,29 @@ def handle_client(conn, addr):
             fill_char = (page_idx + 1) % 255
             response = bytes([fill_char]) * PAGE_SIZE
 
-            conn.sendall(response)
-            print(f"Sent {len(response)} bytes (filled with {fill_char})")
+            await response_queue.put((response, fill_char))
 
     except ConnectionResetError:
         print("Connection reset by peer")
     finally:
-        conn.close()
+        await response_queue.put(None)
+        await writer_task
+        writer.close()
+        await writer.wait_closed()
         print("Connection closed")
 
-def main():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind((HOST, PORT))
-        s.listen()
-        print(f"Page Server listening on {HOST}:{PORT}")
+async def main():
+    server = await asyncio.start_server(
+        handle_client, HOST, PORT)
 
-        while True:
-            conn, addr = s.accept()
-            handle_client(conn, addr)
+    addrs = ', '.join(str(sock.getsockname()) for sock in server.sockets)
+    print(f"Page Server listening on {addrs}")
+
+    async with server:
+        await server.serve_forever()
 
 if __name__ == '__main__':
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nServer shutting down.")

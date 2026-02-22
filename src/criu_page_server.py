@@ -7,7 +7,7 @@ over TCP using the same protocol as page_server.py:
   - Response: 4096 bytes (page data, or zeros if not in pagemap)
 
 Supports pipelined requests (multiple 8-byte requests before reading
-responses) and multiple concurrent clients via threading.
+responses) and multiple concurrent clients via asyncio.
 
 Usage:
     criu_page_server.py --images-dir DIR [--port PORT]
@@ -16,10 +16,9 @@ Usage:
 import argparse
 import glob
 import os
-import socket
 import struct
 import sys
-import threading
+import asyncio
 
 from pycriu import images as criu_images
 
@@ -71,25 +70,31 @@ def build_page_map(images_dir):
 
     return page_map
 
-
-def recv_exact(conn, n):
-    """Receive exactly n bytes from conn, looping until complete."""
-    buf = b""
-    while len(buf) < n:
-        chunk = conn.recv(n - len(buf))
-        if not chunk:
-            return None
-        buf += chunk
-    return buf
-
-
-def handle_client(conn, addr, page_map, fd_cache):
-    """Handle a single client connection with pipelined request support."""
+async def handle_client(reader, writer, page_map):
+    addr = writer.get_extra_info('peername')
     print(f"Connected by {addr}")
+    
+    response_queue = asyncio.Queue()
+    fd_cache = {}
+
+    async def write_loop():
+        try:
+            while True:
+                response = await response_queue.get()
+                if response is None:
+                    break
+                writer.write(response)
+                await writer.drain()
+        except ConnectionError:
+            pass
+
+    writer_task = asyncio.create_task(write_loop())
+
     try:
         while True:
-            data = recv_exact(conn, 8)
-            if data is None:
+            try:
+                data = await reader.readexactly(8)
+            except asyncio.IncompleteReadError:
                 break
 
             fault_addr = struct.unpack("Q", data)[0]
@@ -110,19 +115,35 @@ def handle_client(conn, addr, page_map, fd_cache):
             else:
                 page_data = b"\x00" * PAGE_SIZE
 
-            conn.sendall(page_data)
+            await response_queue.put(page_data)
 
     except ConnectionResetError:
         print(f"Connection reset by {addr}")
-    except BrokenPipeError:
-        print(f"Broken pipe from {addr}")
+    except Exception as e:
+        print(f"Error serving {addr}: {e}")
     finally:
-        conn.close()
-        # Close cached file handles for this client thread
+        await response_queue.put(None)
+        await writer_task
+        writer.close()
+        await writer.wait_closed()
         for fh in fd_cache.values():
             fh.close()
         print(f"Connection closed from {addr}")
 
+async def main_server(images_dir, host, port):
+    page_map = build_page_map(images_dir)
+    print(f"Total pages indexed: {len(page_map)}")
+
+    server = await asyncio.start_server(
+        lambda r, w: handle_client(r, w, page_map),
+        host, port
+    )
+
+    addrs = ', '.join(str(sock.getsockname()) for sock in server.sockets)
+    print(f"Page server listening on {addrs}")
+
+    async with server:
+        await server.serve_forever()
 
 def main():
     parser = argparse.ArgumentParser(description="CRIU image-aware TCP page server")
@@ -135,25 +156,10 @@ def main():
         print(f"ERROR: {args.images_dir} is not a directory", file=sys.stderr)
         sys.exit(1)
 
-    page_map = build_page_map(args.images_dir)
-    print(f"Total pages indexed: {len(page_map)}")
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind((args.host, args.port))
-        s.listen()
-        print(f"Page server listening on {args.host}:{args.port}")
-
-        while True:
-            conn, addr = s.accept()
-            # Each client in its own thread (needed for eager fetch + fault handler)
-            fd_cache = {}  # per-thread file handle cache
-            t = threading.Thread(
-                target=handle_client,
-                args=(conn, addr, page_map, fd_cache),
-                daemon=True,
-            )
-            t.start()
+    try:
+        asyncio.run(main_server(args.images_dir, args.host, args.port))
+    except KeyboardInterrupt:
+        print("\nServer shutting down.")
 
 
 if __name__ == "__main__":
