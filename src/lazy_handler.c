@@ -535,6 +535,16 @@ static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
 			changed = 1;
 		}
 	} else if (window->dropped > 0 ||
+		   window->queue_depth > (PREFETCH_QUEUE_SIZE / 2) ||
+		   (window->prefetched > 0 &&
+		    duplicate_rate >= 80 &&
+		    (pcfg->seq_count <= 4 || pcfg->stride_count <= 2))) {
+		pcfg->seq_count = 0;
+		pcfg->stride_count = 0;
+		pcfg->enabled = 0;
+		pcfg->cooldown_windows = 2;
+		changed = 1;
+	} else if (window->dropped > 0 ||
 		   window->queue_depth > (PREFETCH_QUEUE_SIZE / 4) ||
 		   (window->prefetched > 0 && duplicate_rate >= 50)) {
 		pcfg->seq_count /= 2;
