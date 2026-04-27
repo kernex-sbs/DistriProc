@@ -5,6 +5,8 @@
 _REDIS_PORT=""
 _REDIS_PID=""
 _REDIS_WORK_DIR=""
+_REDIS_KEY_COUNT=10000
+_REDIS_VALUE_SIZE=1024
 
 workload_name() {
     echo "redis"
@@ -59,13 +61,29 @@ workload_warmup() {
         return 1
     fi
 
-    # Populate 10K keys (~10MB working set) using redis-benchmark
-    log_info "Populating 10K keys..."
-    redis-benchmark -p "$_REDIS_PORT" -t set -c 10 -n 10000 -d 1024 -q > /dev/null 2>&1
+    # Populate a real keyspace with unique keys so the checkpointed
+    # Redis image contains a meaningful working set.
+    log_info "Populating ${_REDIS_KEY_COUNT} unique keys..."
+    local value
+    printf -v value '%*s' "$_REDIS_VALUE_SIZE" ''
+    value=${value// /x}
+
+    {
+        for i in $(seq 1 "$_REDIS_KEY_COUNT"); do
+            printf 'SET warm:key:%05d %s\n' "$i" "$value"
+        done
+    } | redis-cli -p "$_REDIS_PORT" --pipe > /dev/null
 
     local dbsize
     dbsize=$(redis-cli -p "$_REDIS_PORT" dbsize 2>/dev/null || echo "0")
-    log_info "Redis warmed up, $dbsize"
+    if [ "$dbsize" -lt "$_REDIS_KEY_COUNT" ] 2>/dev/null; then
+        log_error "Redis warmup incomplete: expected >= ${_REDIS_KEY_COUNT} keys, got $dbsize"
+        return 1
+    fi
+
+    local used_memory
+    used_memory=$(redis-cli -p "$_REDIS_PORT" info memory 2>/dev/null | awk -F: '/^used_memory_human:/ {gsub(/\r/, "", $2); print $2}')
+    log_info "Redis warmed up, dbsize=$dbsize used_memory=${used_memory:-unknown}"
 }
 
 workload_profile() {
@@ -94,7 +112,7 @@ workload_ttfr_probe() {
 workload_throughput() {
     # Run redis-benchmark: get + set, 10 clients, 1K ops each, 30s timeout
     local output
-    output=$(timeout 30 redis-benchmark -p "$_REDIS_PORT" -t get,set -c 10 -n 1000 -q 2>/dev/null || echo "")
+    output=$(timeout 30 redis-benchmark -p "$_REDIS_PORT" -t get,set -c 10 -n 1000 -r "$_REDIS_KEY_COUNT" -q 2>/dev/null || echo "")
 
     if [ -z "$output" ]; then
         log_warn "redis-benchmark returned no output"
