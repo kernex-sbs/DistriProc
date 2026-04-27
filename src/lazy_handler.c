@@ -51,6 +51,7 @@
 #define HISTORY_SIZE 8
 #define MAX_PREFETCH_TARGETS 64
 #define EAGER_BATCH_SIZE 32
+#define PREFETCH_QUEUE_SIZE 1024
 
 /* ── Global state ─────────────────────────────────────── */
 
@@ -79,7 +80,29 @@ struct eager_ctx {
 	const char *address;
 	int port;
 	const char *hot_pages_file;
-	struct hashset *served;
+	struct served_state *served;
+};
+
+struct served_state {
+	struct hashset set;
+	pthread_mutex_t mu;
+};
+
+struct async_prefetch_ctx {
+	int uffd;
+	const char *address;
+	int port;
+	struct served_state *served;
+	pthread_t tid;
+	pthread_mutex_t mu;
+	pthread_cond_t cv;
+	uint64_t queue[PREFETCH_QUEUE_SIZE];
+	int head;
+	int tail;
+	int count;
+	int stop;
+	uint64_t pages_prefetched;
+	uint64_t dropped_requests;
 };
 
 static void signal_handler(int sig)
@@ -226,6 +249,50 @@ static int recv_exact(int fd, void *buf, int n)
 	return 0;
 }
 
+/* ── Shared served-page tracking ─────────────────────── */
+
+static int served_state_init(struct served_state *served, size_t capacity)
+{
+	if (hashset_init(&served->set, capacity) < 0)
+		return -1;
+	if (pthread_mutex_init(&served->mu, NULL) != 0) {
+		hashset_destroy(&served->set);
+		return -1;
+	}
+	return 0;
+}
+
+static void served_state_destroy(struct served_state *served)
+{
+	pthread_mutex_destroy(&served->mu);
+	hashset_destroy(&served->set);
+}
+
+static int served_contains(struct served_state *served, uint64_t addr)
+{
+	int found;
+	pthread_mutex_lock(&served->mu);
+	found = hashset_contains(&served->set, addr);
+	pthread_mutex_unlock(&served->mu);
+	return found;
+}
+
+static void served_insert(struct served_state *served, uint64_t addr)
+{
+	pthread_mutex_lock(&served->mu);
+	hashset_insert(&served->set, addr);
+	pthread_mutex_unlock(&served->mu);
+}
+
+static size_t served_count(struct served_state *served)
+{
+	size_t count;
+	pthread_mutex_lock(&served->mu);
+	count = served->set.count;
+	pthread_mutex_unlock(&served->mu);
+	return count;
+}
+
 /* ── Stride detection ─────────────────────────────────── */
 
 static void history_push(struct fault_history *h, uint64_t addr)
@@ -288,7 +355,7 @@ static int install_page(int uffd, uint64_t addr, void *page_buf)
 
 static int pipeline_fetch_install(int tcp_fd, int uffd,
 				  uint64_t *targets, int ntargets,
-				  struct hashset *served, void *page_buf)
+				  struct served_state *served, void *page_buf)
 {
 	/* Send all requests */
 	for (int i = 0; i < ntargets; i++) {
@@ -303,10 +370,124 @@ static int pipeline_fetch_install(int tcp_fd, int uffd,
 		if (recv_exact(tcp_fd, page_buf, PAGE_SIZE) < 0)
 			return -1;
 		if (install_page(uffd, targets[i], page_buf) == 0)
-			hashset_insert(served, targets[i]);
+			served_insert(served, targets[i]);
 	}
 
 	return 0;
+}
+
+/* ── Async prefetch worker ───────────────────────────── */
+
+static int async_prefetch_init(struct async_prefetch_ctx *ctx, int uffd,
+			       const char *address, int port,
+			       struct served_state *served)
+{
+	memset(ctx, 0, sizeof(*ctx));
+	ctx->uffd = uffd;
+	ctx->address = address;
+	ctx->port = port;
+	ctx->served = served;
+
+	if (pthread_mutex_init(&ctx->mu, NULL) != 0)
+		return -1;
+	if (pthread_cond_init(&ctx->cv, NULL) != 0) {
+		pthread_mutex_destroy(&ctx->mu);
+		return -1;
+	}
+	return 0;
+}
+
+static void async_prefetch_destroy(struct async_prefetch_ctx *ctx)
+{
+	pthread_cond_destroy(&ctx->cv);
+	pthread_mutex_destroy(&ctx->mu);
+}
+
+static int async_prefetch_enqueue(struct async_prefetch_ctx *ctx,
+				  uint64_t *targets, int ntargets)
+{
+	int enqueued = 0;
+
+	pthread_mutex_lock(&ctx->mu);
+	for (int i = 0; i < ntargets; i++) {
+		if (ctx->count == PREFETCH_QUEUE_SIZE) {
+			ctx->dropped_requests += (uint64_t)(ntargets - i);
+			break;
+		}
+		ctx->queue[ctx->tail] = targets[i];
+		ctx->tail = (ctx->tail + 1) % PREFETCH_QUEUE_SIZE;
+		ctx->count++;
+		enqueued++;
+	}
+	if (enqueued > 0)
+		pthread_cond_signal(&ctx->cv);
+	pthread_mutex_unlock(&ctx->mu);
+
+	return enqueued;
+}
+
+static void async_prefetch_stop(struct async_prefetch_ctx *ctx)
+{
+	pthread_mutex_lock(&ctx->mu);
+	ctx->stop = 1;
+	pthread_cond_signal(&ctx->cv);
+	pthread_mutex_unlock(&ctx->mu);
+}
+
+static void *async_prefetch_thread(void *arg)
+{
+	struct async_prefetch_ctx *ctx = (struct async_prefetch_ctx *)arg;
+	uint64_t batch[EAGER_BATCH_SIZE];
+	char page_buf[PAGE_SIZE];
+	int tcp_fd;
+
+	tcp_fd = connect_page_server(ctx->address, ctx->port);
+	if (tcp_fd < 0) {
+		fprintf(stderr, "Async prefetch: failed to connect to page server\n");
+		return NULL;
+	}
+
+	printf("Async prefetch: connected to page server\n");
+
+	for (;;) {
+		int batch_count = 0;
+
+		pthread_mutex_lock(&ctx->mu);
+		while (ctx->count == 0 && !ctx->stop)
+			pthread_cond_wait(&ctx->cv, &ctx->mu);
+
+		if (ctx->count == 0 && ctx->stop) {
+			pthread_mutex_unlock(&ctx->mu);
+			break;
+		}
+
+		while (ctx->count > 0 && batch_count < EAGER_BATCH_SIZE) {
+			uint64_t addr = ctx->queue[ctx->head];
+			ctx->head = (ctx->head + 1) % PREFETCH_QUEUE_SIZE;
+			ctx->count--;
+			batch[batch_count++] = addr;
+		}
+		pthread_mutex_unlock(&ctx->mu);
+
+		/* Skip pages that arrived before the worker got to them. */
+		int filtered = 0;
+		for (int i = 0; i < batch_count; i++) {
+			if (!served_contains(ctx->served, batch[i]))
+				batch[filtered++] = batch[i];
+		}
+		if (filtered == 0)
+			continue;
+
+		if (pipeline_fetch_install(tcp_fd, ctx->uffd, batch, filtered,
+					   ctx->served, page_buf) < 0) {
+			fprintf(stderr, "Async prefetch: fetch/install failed\n");
+			break;
+		}
+		ctx->pages_prefetched += (uint64_t)filtered;
+	}
+
+	close(tcp_fd);
+	return NULL;
 }
 
 /* ── Eager fetch thread (hot pages) ───────────────────── */
@@ -338,7 +519,7 @@ static void *eager_fetch_thread(void *arg)
 	}
 
 	while (fread(&addr, sizeof(uint64_t), 1, f) == 1) {
-		if (hashset_contains(ctx->served, addr))
+		if (served_contains(ctx->served, addr))
 			continue;
 		batch[batch_idx++] = addr;
 
@@ -355,7 +536,7 @@ static void *eager_fetch_thread(void *arg)
 				if (recv_exact(tcp_fd, page_buf, PAGE_SIZE) < 0)
 					goto done;
 				if (install_page(ctx->uffd, batch[i], page_buf) == 0) {
-					hashset_insert(ctx->served, batch[i]);
+					served_insert(ctx->served, batch[i]);
 					total_installed++;
 				}
 			}
@@ -375,7 +556,7 @@ static void *eager_fetch_thread(void *arg)
 			if (recv_exact(tcp_fd, page_buf, PAGE_SIZE) < 0)
 				goto done;
 			if (install_page(ctx->uffd, batch[i], page_buf) == 0) {
-				hashset_insert(ctx->served, batch[i]);
+				served_insert(ctx->served, batch[i]);
 				total_installed++;
 			}
 		}
@@ -400,15 +581,17 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 	char *page;
 	int restore_finished = 0;
 
-	struct hashset served;
+	struct served_state served;
 	struct fault_history history;
 	struct prefetch_stats stats;
 	pthread_t eager_tid = 0;
 	struct eager_ctx ectx;
 	int eager_started = 0;
+	struct async_prefetch_ctx prefetch_ctx;
+	int prefetch_started = 0;
 
-	if (hashset_init(&served, 1024) < 0) {
-		fprintf(stderr, "hashset_init failed\n");
+	if (served_state_init(&served, 1024) < 0) {
+		fprintf(stderr, "served_state_init failed\n");
 		return -1;
 	}
 
@@ -417,11 +600,28 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 
 	if (posix_memalign((void **)&page, PAGE_SIZE, PAGE_SIZE) != 0) {
 		perror("posix_memalign");
-		hashset_destroy(&served);
+		served_state_destroy(&served);
+		return -1;
+	}
+
+	if (async_prefetch_init(&prefetch_ctx, uffd, address, port, &served) < 0) {
+		fprintf(stderr, "async_prefetch_init failed\n");
+		free(page);
+		served_state_destroy(&served);
 		return -1;
 	}
 
 	setbuf(stdout, NULL);  /* Unbuffered for log visibility */
+
+	if (pcfg->enabled) {
+		if (pthread_create(&prefetch_ctx.tid, NULL, async_prefetch_thread,
+				   &prefetch_ctx) == 0) {
+			prefetch_started = 1;
+			printf("Started async prefetch thread\n");
+		} else {
+			perror("pthread_create async prefetch");
+		}
+	}
 
 	/* Start eager fetch thread if hot pages file provided */
 	if (hot_pages_file) {
@@ -506,7 +706,7 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 			stats.total_faults++;
 
 			/* Already served (by prefetch or eager fetch)? */
-			if (hashset_contains(&served, page_addr)) {
+			if (served_contains(&served, page_addr)) {
 				stats.prefetch_hits++;
 				/* Still need to resolve the fault — the page is
 				 * installed but uffd may still be blocking.
@@ -522,8 +722,10 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 			/* Build prefetch target list */
 			uint64_t targets[MAX_PREFETCH_TARGETS];
 			int ntargets = 0;
+			uint64_t prefetch_targets[MAX_PREFETCH_TARGETS];
+			int nprefetch = 0;
 
-			targets[ntargets++] = page_addr;  /* faulted page first */
+			targets[ntargets++] = page_addr;  /* faulted page only */
 
 			if (pcfg->enabled) {
 				int64_t stride = detect_stride(&history);
@@ -533,20 +735,20 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 					for (int i = 1; i <= pcfg->stride_count && ntargets < MAX_PREFETCH_TARGETS; i++) {
 						uint64_t candidate = page_addr + (uint64_t)(i * stride);
 						candidate &= ~(PAGE_SIZE - 1UL);
-						if (candidate != 0 && !hashset_contains(&served, candidate))
-							targets[ntargets++] = candidate;
+						if (candidate != 0 && !served_contains(&served, candidate))
+							prefetch_targets[nprefetch++] = candidate;
 					}
 				} else {
 					/* Sequential prefetch */
-					for (int i = 1; i <= pcfg->seq_count && ntargets < MAX_PREFETCH_TARGETS; i++) {
+					for (int i = 1; i <= pcfg->seq_count && nprefetch < MAX_PREFETCH_TARGETS; i++) {
 						uint64_t candidate = page_addr + (uint64_t)(i * PAGE_SIZE);
-						if (!hashset_contains(&served, candidate))
-							targets[ntargets++] = candidate;
+						if (!served_contains(&served, candidate))
+							prefetch_targets[nprefetch++] = candidate;
 					}
 				}
 			}
 
-			/* Pipeline: send all, then recv all */
+			/* Faulted page stays on the critical path. */
 			if (pipeline_fetch_install(tcp_fd, uffd, targets, ntargets,
 						   &served, page) < 0) {
 				fprintf(stderr, "Failed to fetch page %#lx\n",
@@ -554,11 +756,11 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 				/* Serve a zero page as fallback for the faulted page */
 				memset(page, 0, PAGE_SIZE);
 				install_page(uffd, page_addr, page);
-				hashset_insert(&served, page_addr);
+				served_insert(&served, page_addr);
 			}
 
-			if (ntargets > 1)
-				stats.pages_prefetched += (uint64_t)(ntargets - 1);
+			if (nprefetch > 0 && prefetch_started)
+				async_prefetch_enqueue(&prefetch_ctx, prefetch_targets, nprefetch);
 
 			history_push(&history, page_addr);
 
@@ -566,7 +768,7 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 				printf("Fault %lu: %#lx (prefetched %d)\n",
 				       (unsigned long)stats.total_faults,
 				       (unsigned long)page_addr,
-				       ntargets - 1);
+				       nprefetch);
 			}
 		}
 
@@ -577,9 +779,16 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 		}
 	}
 
+	if (prefetch_started) {
+		async_prefetch_stop(&prefetch_ctx);
+		pthread_join(prefetch_ctx.tid, NULL);
+	}
+
 	/* Wait for eager fetch thread */
 	if (eager_started)
 		pthread_join(eager_tid, NULL);
+
+	stats.pages_prefetched = prefetch_ctx.pages_prefetched;
 
 	/* Print stats */
 	uint64_t hit_rate = 0;
@@ -591,10 +800,15 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 	       (unsigned long)stats.prefetch_hits,
 	       (unsigned long)hit_rate);
 	printf("Total pages served: %lu\n",
-	       (unsigned long)served.count);
+	       (unsigned long)served_count(&served));
+	if (prefetch_ctx.dropped_requests > 0) {
+		printf("Prefetch queue drops: %lu\n",
+		       (unsigned long)prefetch_ctx.dropped_requests);
+	}
 
+	async_prefetch_destroy(&prefetch_ctx);
 	free(page);
-	hashset_destroy(&served);
+	served_state_destroy(&served);
 	return 0;
 }
 
