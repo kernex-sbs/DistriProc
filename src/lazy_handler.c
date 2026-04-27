@@ -103,6 +103,7 @@ struct async_prefetch_ctx {
 	int stop;
 	uint64_t pages_prefetched;
 	uint64_t dropped_requests;
+	uint64_t skipped_duplicates;
 };
 
 static void signal_handler(int sig)
@@ -277,6 +278,15 @@ static int served_contains(struct served_state *served, uint64_t addr)
 	return found;
 }
 
+static int target_list_contains(const uint64_t *targets, int ntargets, uint64_t addr)
+{
+	for (int i = 0; i < ntargets; i++) {
+		if (targets[i] == addr)
+			return 1;
+	}
+	return 0;
+}
+
 static void served_insert(struct served_state *served, uint64_t addr)
 {
 	pthread_mutex_lock(&served->mu);
@@ -410,6 +420,18 @@ static int async_prefetch_enqueue(struct async_prefetch_ctx *ctx,
 
 	pthread_mutex_lock(&ctx->mu);
 	for (int i = 0; i < ntargets; i++) {
+		int duplicate = 0;
+		for (int j = 0; j < ctx->count; j++) {
+			int idx = (ctx->head + j) % PREFETCH_QUEUE_SIZE;
+			if (ctx->queue[idx] == targets[i]) {
+				duplicate = 1;
+				break;
+			}
+		}
+		if (duplicate) {
+			ctx->skipped_duplicates++;
+			continue;
+		}
 		if (ctx->count == PREFETCH_QUEUE_SIZE) {
 			ctx->dropped_requests += (uint64_t)(ntargets - i);
 			break;
@@ -483,7 +505,9 @@ static void *async_prefetch_thread(void *arg)
 			fprintf(stderr, "Async prefetch: fetch/install failed\n");
 			break;
 		}
+		pthread_mutex_lock(&ctx->mu);
 		ctx->pages_prefetched += (uint64_t)filtered;
+		pthread_mutex_unlock(&ctx->mu);
 	}
 
 	close(tcp_fd);
@@ -732,17 +756,20 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 
 				if (stride != 0) {
 					/* Stride prefetch */
-					for (int i = 1; i <= pcfg->stride_count && ntargets < MAX_PREFETCH_TARGETS; i++) {
+					for (int i = 1; i <= pcfg->stride_count && nprefetch < MAX_PREFETCH_TARGETS; i++) {
 						uint64_t candidate = page_addr + (uint64_t)(i * stride);
 						candidate &= ~(PAGE_SIZE - 1UL);
-						if (candidate != 0 && !served_contains(&served, candidate))
+						if (candidate != 0 &&
+						    !served_contains(&served, candidate) &&
+						    !target_list_contains(prefetch_targets, nprefetch, candidate))
 							prefetch_targets[nprefetch++] = candidate;
 					}
 				} else {
 					/* Sequential prefetch */
 					for (int i = 1; i <= pcfg->seq_count && nprefetch < MAX_PREFETCH_TARGETS; i++) {
 						uint64_t candidate = page_addr + (uint64_t)(i * PAGE_SIZE);
-						if (!served_contains(&served, candidate))
+						if (!served_contains(&served, candidate) &&
+						    !target_list_contains(prefetch_targets, nprefetch, candidate))
 							prefetch_targets[nprefetch++] = candidate;
 					}
 				}
@@ -804,6 +831,10 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 	if (prefetch_ctx.dropped_requests > 0) {
 		printf("Prefetch queue drops: %lu\n",
 		       (unsigned long)prefetch_ctx.dropped_requests);
+	}
+	if (prefetch_ctx.skipped_duplicates > 0) {
+		printf("Prefetch duplicates skipped: %lu\n",
+		       (unsigned long)prefetch_ctx.skipped_duplicates);
 	}
 
 	async_prefetch_destroy(&prefetch_ctx);
