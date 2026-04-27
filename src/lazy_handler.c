@@ -530,8 +530,8 @@ static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
 			pcfg->cooldown_windows--;
 		if (pcfg->cooldown_windows == 0) {
 			pcfg->enabled = 1;
-			pcfg->seq_count = pcfg->base_seq_count;
-			pcfg->stride_count = pcfg->base_stride_count;
+			pcfg->seq_count = 2;   /* Start small to probe */
+			pcfg->stride_count = 1;
 			changed = 1;
 		}
 	} else if (window->dropped > 0 ||
@@ -592,7 +592,7 @@ static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
 			       pcfg->cooldown_windows);
 		}
 		if (old_enabled != pcfg->enabled && pcfg->enabled) {
-			printf("Policy: prefetch re-enabled at base window\n");
+			printf("Policy: prefetch re-enabled with probe window\n");
 		}
 	}
 
