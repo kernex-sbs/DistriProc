@@ -25,6 +25,7 @@ WORKLOADS="test_loop,redis,pytorch"
 MODES="full,lazy,lazy-prefetch,lazy-adaptive,lazy-hot"
 ITERATIONS=5
 OUTPUT_DIR="$ROOT_DIR/eval/results"
+LOG_DIR=""
 
 # ── Parse arguments ─────────────────────────────────────────────────────────
 
@@ -76,6 +77,8 @@ if [ ! -f "$PAGE_SERVER" ]; then
 fi
 
 mkdir -p "$OUTPUT_DIR"
+LOG_DIR="$OUTPUT_DIR/logs"
+mkdir -p "$LOG_DIR"
 
 CSV_FILE="$OUTPUT_DIR/results.csv"
 csv_header "$CSV_FILE"
@@ -112,6 +115,7 @@ run_iteration() {
     local wl_name="$1" mode="$2" iter="$3"
     local work_dir
     work_dir=$(mktemp -d "/tmp/distriproc-bench-${wl_name}-${mode}-XXXXXX")
+    local log_prefix="$LOG_DIR/${wl_name}_${mode}_iter${iter}"
 
     local checkpoint_ms=0 ttfr_ms=-1 throughput=0
     local handler_stats="0,0,0,0,0,0"
@@ -207,7 +211,14 @@ run_iteration() {
     # 8. Record CSV
     csv_append "$CSV_FILE" "${wl_name},${mode},${iter},${ttfr_ms},${throughput},${handler_stats},${checkpoint_ms}"
 
-    # 9. Cleanup
+    # 9. Preserve logs for later policy analysis
+    for name in dump.log restore.log handler.log page_server.log workload.log; do
+        if [ -f "$work_dir/$name" ]; then
+            cp "$work_dir/$name" "${log_prefix}_${name}"
+        fi
+    done
+
+    # 10. Cleanup
     rm -rf "$work_dir"
     log_info "[$wl_name/$mode] iteration $iter done"
 }

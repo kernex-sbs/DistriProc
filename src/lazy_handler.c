@@ -81,6 +81,7 @@ struct adaptive_window {
 	uint64_t prefetched;
 	uint64_t dropped;
 	uint64_t duplicates;
+	uint64_t queue_depth;
 };
 
 struct fault_history {
@@ -491,12 +492,14 @@ static void async_prefetch_stop(struct async_prefetch_ctx *ctx)
 static void async_prefetch_snapshot(struct async_prefetch_ctx *ctx,
 				    uint64_t *prefetched,
 				    uint64_t *dropped,
-				    uint64_t *duplicates)
+				    uint64_t *duplicates,
+				    uint64_t *queue_depth)
 {
 	pthread_mutex_lock(&ctx->mu);
 	*prefetched = ctx->pages_prefetched;
 	*dropped = ctx->dropped_requests;
 	*duplicates = ctx->skipped_duplicates;
+	*queue_depth = (uint64_t)ctx->count;
 	pthread_mutex_unlock(&ctx->mu);
 }
 
@@ -504,7 +507,7 @@ static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
 					 struct adaptive_window *window)
 {
 	const uint64_t min_faults = 64;
-	uint64_t hit_rate = 0;
+	uint64_t duplicate_rate = 0;
 	int old_enabled;
 	int old_seq;
 	int old_stride;
@@ -513,8 +516,10 @@ static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
 	if (!pcfg->adaptive || window->faults < min_faults)
 		return;
 
-	if (window->faults > 0)
-		hit_rate = (window->hits * 100) / window->faults;
+	if (window->prefetched + window->duplicates > 0) {
+		duplicate_rate = (window->duplicates * 100) /
+				 (window->prefetched + window->duplicates);
+	}
 
 	old_enabled = pcfg->enabled;
 	old_seq = pcfg->seq_count;
@@ -529,7 +534,9 @@ static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
 			pcfg->stride_count = pcfg->base_stride_count;
 			changed = 1;
 		}
-	} else if (window->dropped > 0 || (window->prefetched > 0 && hit_rate < 5)) {
+	} else if (window->dropped > 0 ||
+		   window->queue_depth > (PREFETCH_QUEUE_SIZE / 4) ||
+		   (window->prefetched > 0 && duplicate_rate >= 50)) {
 		pcfg->seq_count /= 2;
 		pcfg->stride_count /= 2;
 		if (pcfg->seq_count < 1)
@@ -541,7 +548,10 @@ static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
 			pcfg->cooldown_windows = 2;
 		}
 		changed = 1;
-	} else if (window->prefetched > 0 && hit_rate >= 20 && window->dropped == 0) {
+	} else if (window->prefetched > 0 &&
+		   window->duplicates == 0 &&
+		   window->dropped == 0 &&
+		   window->queue_depth < (PREFETCH_QUEUE_SIZE / 16)) {
 		if (pcfg->seq_count < pcfg->max_seq_count) {
 			pcfg->seq_count += 2;
 			if (pcfg->seq_count > pcfg->max_seq_count)
@@ -556,13 +566,14 @@ static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
 	}
 
 	if (changed) {
-		printf("Policy: faults=%lu hits=%lu prefetched=%lu drops=%lu dup=%lu hit_rate=%lu%% => prefetch=%s seq %d->%d stride %d->%d\n",
+		printf("Policy: faults=%lu hits=%lu prefetched=%lu drops=%lu dup=%lu dup_rate=%lu%% qdepth=%lu => prefetch=%s seq %d->%d stride %d->%d\n",
 		       (unsigned long)window->faults,
 		       (unsigned long)window->hits,
 		       (unsigned long)window->prefetched,
 		       (unsigned long)window->dropped,
 		       (unsigned long)window->duplicates,
-		       (unsigned long)hit_rate,
+		       (unsigned long)duplicate_rate,
+		       (unsigned long)window->queue_depth,
 		       pcfg->enabled ? "on" : "off",
 		       old_seq, pcfg->seq_count,
 		       old_stride, pcfg->stride_count);
@@ -948,11 +959,14 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 				uint64_t total_prefetched;
 				uint64_t total_dropped;
 				uint64_t total_duplicates;
+				uint64_t queue_depth;
 				async_prefetch_snapshot(&prefetch_ctx, &total_prefetched,
-							&total_dropped, &total_duplicates);
+							&total_dropped, &total_duplicates,
+							&queue_depth);
 				window.prefetched = total_prefetched - last_prefetched;
 				window.dropped = total_dropped - last_dropped;
 				window.duplicates = total_duplicates - last_duplicates;
+				window.queue_depth = queue_depth;
 				maybe_adjust_prefetch_policy(pcfg, &window);
 				last_prefetched = total_prefetched;
 				last_dropped = total_dropped;
@@ -981,8 +995,10 @@ done:
 		uint64_t total_prefetched;
 		uint64_t total_dropped;
 		uint64_t total_duplicates;
+		uint64_t queue_depth;
 		async_prefetch_snapshot(&prefetch_ctx, &total_prefetched,
-					&total_dropped, &total_duplicates);
+					&total_dropped, &total_duplicates,
+					&queue_depth);
 		stats.pages_prefetched = total_prefetched;
 	}
 
