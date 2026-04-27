@@ -1,4 +1,4 @@
-# DistriProc Evaluation Results
+# DistriProc Baseline Evaluation
 
 **Date**: 2026-02-13
 **System**: AMD Ryzen 7 7735HS, 15GB RAM, Linux 6.18.7-arch1-1, CRIU 4.2
@@ -8,9 +8,15 @@
 
 ## 1. Executive Summary
 
-DistriProc's lazy restore delivers **sub-second time-to-first-request** with **near-baseline throughput** for all tested workloads. The plain lazy mode (no prefetching) is the optimal configuration — synchronous prefetching actively harms performance for real workloads.
+This document records the **baseline prototype evaluation** that motivates the next phase of DistriProc. The current prototype already shows that lazy restore can deliver sub-second time-to-first-request for selected workloads, and that the existing synchronous prefetch design is the wrong direction for a final system.
 
-| Workload | Lazy TTFR | Full TTFR | Lazy Throughput | Verdict |
+The key takeaway is not that the current implementation is finished. The key takeaway is that:
+
+1. Plain lazy restore is a strong baseline.
+2. Fixed synchronous prefetch can be actively harmful.
+3. The next system should use asynchronous, adaptive policy instead of fixed prefetch windows.
+
+| Workload | Lazy TTFR | Full TTFR | Lazy Throughput | Baseline verdict |
 |----------|-----------|-----------|-----------------|---------|
 | Redis | 29ms | 28ms | 97% of baseline | H1 PASS, H2 PASS |
 | PyTorch ResNet-18 | 718ms | 284ms | 102% of baseline | H1 PASS, H2 PASS |
@@ -26,7 +32,7 @@ DistriProc's lazy restore delivers **sub-second time-to-first-request** with **n
 
 **Redis** — Cache server workload. `redis-server` with in-memory keys, no persistence. ~116 pages at checkpoint. Tests latency-sensitive server restore. TTFR = time until `PING` returns `PONG`. Throughput via `redis-benchmark` (GET+SET, 10 clients, 1K ops).
 
-**PyTorch ResNet-18** — ML inference workload. Loads ResNet-18 (random weights, CPU), runs single inference. ~15,600 pages (~61MB). Tests large-process lazy restore. TTFR = time until inference result written. Throughput = inferences/sec over 50 forward passes.
+**PyTorch ResNet-18** — ML inference workload. Loads ResNet-18 (random weights, CPU), runs single inference. ~15,600 pages (~61MB). Tests large-process lazy restore. TTFR = time until inference result written. The current throughput measurement is only a rough proxy and is called out below as a limitation.
 
 ### 2.2 Restore Modes
 
@@ -78,9 +84,9 @@ DistriProc's lazy restore delivers **sub-second time-to-first-request** with **n
 
 **Key observations:**
 
-- **Lazy throughput is near-baseline for all workloads.** Redis at 97%, PyTorch at 102% (within noise). Once pages are loaded, there is no ongoing penalty.
+- **Lazy throughput is near-baseline for Redis and test_loop.** For PyTorch, the current number should be treated as provisional because the benchmark does not reuse the restored process.
 - **Redis prefetch throughput collapses to 9%.** Measured during active page faulting — the benchmark runs while the handler is still serving faults with prefetch overhead.
-- **PyTorch throughput is identical across all modes** because the throughput test runs a fresh Python process (not the restored one), measuring the model's inherent inference speed.
+- **PyTorch throughput is identical across all modes** because the throughput test runs a fresh Python process (not the restored one), measuring the model's inherent inference speed rather than post-restore steady-state behavior.
 
 ### 3.3 Page Fault Analysis
 
@@ -106,7 +112,7 @@ DistriProc's lazy restore delivers **sub-second time-to-first-request** with **n
 
 ---
 
-## 4. Hypothesis Validation
+## 4. Baseline Hypothesis Check
 
 ### H1: Time-to-first-request < 1000ms
 
@@ -128,7 +134,7 @@ The lazy-prefetch and lazy-hot modes fail H1 for Redis (2.9s) and PyTorch (>30s)
 | PyTorch | lazy | 102% | **PASS** |
 | test_loop | lazy | 100% | **PASS** |
 
-**Verdict: H2 confirmed for lazy mode across all workloads.**
+**Verdict: H2 is only solid for Redis and test_loop in the current artifact.**
 
 Redis with prefetching fails at 9-10% of baseline. The throughput penalty is entirely from the prefetch overhead during restore, not from the lazy mechanism itself.
 
@@ -149,13 +155,13 @@ Lazy restore provides **sub-second TTFR** for all workloads:
 
 Compared to CRIU's full restore, the key win is that lazy restore starts the process *immediately* and faults in pages as needed, rather than loading all pages before execution begins. For small-footprint servers like Redis, this means zero TTFR penalty.
 
-### RQ3: Does prefetching help?
+### RQ3: Does fixed synchronous prefetching help?
 
 **No, in its current synchronous form.** Prefetching reduces page faults by 91-94% but the synchronous TCP round-trips per fault (24 extra pages × ~0.1ms each) create a bottleneck worse than demand paging.
 
 **Root cause:** The fault handler blocks on `recv()` while fetching prefetched pages. During this time, the process is stalled — it cannot handle the next fault until all prefetch pages arrive.
 
-**Implication for future work:** Prefetching must be **asynchronous** — fetch extra pages in a background thread while immediately returning the faulted page to unblock the process.
+**Implication for future work:** Prefetching must be **asynchronous** and eventually **adaptive** — fetch extra pages without blocking the faulted page, and turn prefetching down when it stops helping.
 
 ### RQ4: What is the throughput cost of lazy restore?
 
@@ -175,16 +181,18 @@ Compared to CRIU's full restore, the key win is that lazy restore starts the pro
 
 5. **No P99 latency measurement.** Only mean TTFR and throughput were measured. Tail latency during page fault storms is unknown.
 
+6. **No adaptive policy yet.** These results compare fixed modes only. The intended paper direction requires asynchronous prefetch and a controller that can switch policy online.
+
 ---
 
 ## 7. Conclusions
 
-1. **Plain lazy restore is the optimal strategy.** It achieves sub-second TTFR with near-baseline throughput across all workloads, with zero configuration needed.
+1. **Plain lazy restore is the correct baseline.** It achieves sub-second TTFR for the current workloads and gives the control point from which adaptive policy should improve.
 
-2. **Synchronous prefetching is harmful.** While it reduces fault count by 91-94%, the blocking TCP overhead per fault makes it 100x worse than demand paging for Redis. The prefetching architecture needs to be asynchronous.
+2. **Synchronous prefetching is harmful.** While it reduces fault count by 91-94%, the blocking TCP overhead per fault makes it far worse than demand paging for Redis. The prefetching architecture needs to be asynchronous.
 
 3. **Process size determines TTFR.** Redis (116 pages) restores in 29ms. PyTorch (15,632 pages) takes 718ms. TTFR scales roughly with the number of pages accessed during startup.
 
-4. **No steady-state throughput penalty.** After initial page faults resolve, all workloads run at native speed. The userfaultfd mechanism has zero overhead for already-installed pages.
+4. **Steady-state cost still needs better measurement.** The mechanism itself should impose little overhead after pages are installed, but the current artifact does not yet measure this cleanly for every workload.
 
-5. **The core thesis holds:** Linux processes can execute with fully remote address spaces, fetching pages on-demand over TCP, with sub-second time-to-first-request and negligible throughput cost.
+5. **The next paper step is clear:** build an asynchronous adaptive runtime on top of this baseline and evaluate when it beats fixed policy choices.

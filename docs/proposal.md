@@ -4,19 +4,40 @@
 
 ---
 
+## Status Note
+
+This document now serves two purposes:
+
+1. It preserves the original broader vision for DistriProc.
+2. It records the narrower paper direction that matches the current repository.
+
+The current codebase already supports post-restore remote paging over TCP with `CRIU` and `userfaultfd`, plus fixed policy variants such as synchronous prefetch and eager hot-page fetch. It does **not** yet implement writable remote-memory coherence, a complete adaptive controller, or the full evaluation promised by the earliest proposal text.
+
+For the next paper iteration, the active target is:
+
+**an adaptive post-restore remote-memory runtime for restored Linux processes**
+
+The intended contribution is a userspace policy/runtime story on top of CRIU lazy restore, not a general distributed shared-memory system.
+
+---
+
 ## One-Line Thesis
 
-**We show that Linux processes can execute indefinitely with partially remote address spaces, turning memory into a networked resource rather than a local requirement.**
+**We show that restored Linux processes can enter a managed remote-memory phase, where page-fetch policy after restore is chosen adaptively rather than fixed in advance.**
 
 ---
 
 ## Executive Summary
 
-DistriProc enables Linux processes to execute with distributed memory by implementing on-demand page fetching via userfaultfd. Unlike container migration systems that eventually transfer all memory locally, DistriProc treats remote memory as a first-class execution environment where pages remain distributed across machines while preserving full Linux process semantics.
+DistriProc currently demonstrates that Linux processes can be restored quickly and execute while missing pages are fetched on demand over TCP via `userfaultfd`. The prototype already includes a custom lazy-pages handler, fixed prefetch modes, hot-page eager fetch, and initial evaluation on Redis, PyTorch, and a small synthetic loop workload.
 
-**Core contribution**: We demonstrate a semantic change in process execution—memory location becomes decoupled from execution location.
+The next paper should focus on a narrower and stronger claim:
 
-**Key results**: Sub-second time-to-first-request (vs. CRIU's 30-60s full migration), >70% throughput with 50% remote memory for cache-heavy workloads.
+**Core contribution**: an adaptive userspace runtime for post-restore remote memory, built on top of CRIU lazy restore.
+
+The central hypothesis is that restored processes pass through distinct startup and steady-state phases, and that a fixed page-fetch policy is therefore the wrong abstraction. Instead, the runtime should adapt among demand paging, asynchronous prefetch, and eager hot-page installation based on observed fault patterns and network cost.
+
+The current baseline result motivating this direction is simple: plain demand paging works reasonably well, while synchronous prefetch can reduce fault counts yet still degrade TTFR and throughput badly. The adaptive runtime is intended to recover the useful cases for prefetching without paying those worst-case stalls.
 
 ---
 
@@ -38,30 +59,30 @@ Current solutions are insufficient:
 
 ### 1.2 Key Insight
 
-PCLive demonstrated processes can *start* before memory arrives. We observe:
+CRIU lazy restore already shows that processes can *start* before all memory arrives. The research gap is no longer whether post-restore paging is possible, but how the runtime should behave after restore.
 
-> **If processes can start with incomplete memory, why must memory ever be complete?**
+We observe:
 
-This motivates a semantic shift:
+> **A restored process does not need one fixed paging policy; it needs the right policy for its current phase.**
+
+This motivates a runtime shift:
 
 ```
-Traditional:     Process → Requires local memory
-DistriProc:      Process → Tolerates remote memory
+Traditional lazy restore:     One fixed fault-handling policy
+DistriProc target:            Adaptive post-restore policy runtime
 ```
 
-Not optimization. **Changed execution model.**
+Not just mechanism. **Policy becomes the contribution.**
 
 ### 1.3 Our Approach
 
-**We build process-level remote paging on three Linux primitives:**
+**We build an adaptive post-restore runtime on three Linux primitives:**
 
-1. **CRIU** checkpoint/restore (mature, production-ready)
-2. **userfaultfd** (user-space page fault handling since Linux 4.11)
-3. **Network paging** (TCP/RDMA page transport)
+1. **CRIU** checkpoint/restore and lazy restore
+2. **userfaultfd** for user-space page-fault handling
+3. **Network page serving** over TCP in the current prototype
 
-**Result**: Processes execute while memory remains distributed, fetching pages on-demand like network I/O.
-
-Think: **NFS for memory**.
+**Result**: a restored process begins in a remote-memory phase, and the runtime decides whether to demand-page, prefetch asynchronously, or eagerly install pages based on observed behavior.
 
 ---
 
@@ -81,57 +102,37 @@ Policy considers network characteristics. Hot pages via RDMA (<10μs), cold page
 
 ---
 
-## 3. Memory Consistency Model
+## 3. Scope Boundary for the Current Paper
 
-**This ensures correctness for concurrent/distributed access.**
+The current paper target is intentionally narrower than the original vision.
 
-### 3.1 Consistency Guarantees
+### 3.1 In Scope
 
-DistriProc implements **single-writer, source-of-truth** consistency:
+1. Read-dominant restored processes
+2. Post-restore page fetch over TCP
+3. Userspace runtime policy over CRIU lazy restore
+4. Demand paging, asynchronous prefetch, hot-page eager fetch
+5. Characterization of startup vs steady-state behavior
 
-**Invariants**:
-1. Exactly one memory server holds authoritative state per process
-2. All pages originate from source node
-3. Destination caches read-only copies
-4. Writes propagate to source
+### 3.2 Explicitly Out of Scope for This Iteration
 
-**Memory Operations**:
-
-```
-READ (page P not local):
-  1. Fault on P
-  2. Fetch P from source
-  3. Cache locally (read-only)
-  4. Resume
-
-WRITE (page P):
-  1. Write-through to source
-  2. Mark local copy dirty
-  3. Source becomes authoritative
-```
-
-### 3.2 Write-Through Justification
-
-For v1, we implement **write-through**:
-
-✓ Simple (no coherence protocol)
-✓ Correct (source always consistent)
-✓ Safe (failure = revert to source)
-✗ High write latency (~100-500μs)
-
-**Design choice**: Targets read-heavy workloads where write latency is acceptable.
-
-**Future work**: Write-back with dirty tracking (Phase 2).
+1. Writable remote-memory coherence
+2. Write-through or write-back propagation protocols
+3. Multi-node distributed shared memory semantics
+4. RDMA/NIC-offloaded data paths
+5. Replication and high-availability mechanisms
 
 ### 3.3 Failure Semantics
 
-| Failure | Recovery |
-|---------|----------|
-| Destination crashes | Re-restore from source checkpoint |
-| Source crashes | Process crashes (no authoritative state) |
-| Network partition | Process stalls on fault → timeout → crash |
+The current prototype assumes a simple post-restore execution model:
 
-**Philosophical choice**: DistriProc prioritizes simplicity over availability; replication is future work.
+| Failure | Current stance |
+|---------|----------------|
+| Destination crashes | Re-run restore from checkpoint |
+| Source/page server crashes | Restored process can no longer fault in missing pages |
+| Network partition | Process stalls or fails once faults can no longer be served |
+
+These are baseline prototype semantics, not the main paper contribution.
 
 ---
 
@@ -256,11 +257,11 @@ DistriProc is suitable for:
 |----------|-------------|---------------------|
 | **Redis** | Hot keys cached, cold keys fetched | >70% throughput |
 | **ML Inference** | Weights read-only, sequential | <2x latency |
-| **NGINX** | Static content cacheable | >60% throughput |
+| **Small service workloads** | Early startup touches limited hot state | Low TTFR with adaptive paging |
 
 ### 5.3 What Doesn't Work
 
-❌ **Write-heavy DBs** (Postgres with transactions) → Write-through kills performance
+❌ **Write-heavy DBs** (Postgres with transactions) → current prototype does not target writable remote-memory coherence
 ❌ **HPC random access** (graph analytics) → No locality, thrashing
 ❌ **Real-time systems** (trading) → Cannot tolerate 100μs faults
 ❌ **Memory-bound loops** (matrix multiply) → Too many faults
@@ -273,9 +274,9 @@ DistriProc is suitable for:
 
 ### 6.1 Research Contributions
 
-**C1: Demonstrate indefinite remote execution**
+**C1: Demonstrate post-restore remote execution**
 
-We show Linux processes can execute *indefinitely* with partially remote address spaces. Not migration—execution semantics change: memory becomes a networked resource.
+We show Linux processes can restore successfully and continue executing while missing pages are served remotely on demand.
 
 **C2: Design process-aware remote paging**
 
@@ -287,20 +288,20 @@ Unlike VM-based DSM, we preserve:
 
 This enables container orchestration (Kubernetes) integration.
 
-**C3: Optimize CRIU lazy-pages**
+**C3: Build a policy runtime over CRIU lazy-pages**
 
 We take CRIU's underused feature and add:
 - Hot/cold classification (via /proc/pid/smaps)
-- Sequential + stride prefetching
-- Access-frequency-based placement
-- Optional RDMA fast path
+- Sequential + stride prefetching baselines
+- A path toward asynchronous and adaptive policy control
+- Instrumentation for fault behavior and startup cost
 
 **C4: Characterize workload suitability**
 
-We evaluate Redis, PyTorch, NGINX and show:
+We evaluate Redis, PyTorch, and small synthetic workloads and show:
 - Which workloads tolerate remote memory
-- Performance vs. remote memory fraction
 - Bottleneck analysis (fault rate, network, prefetch)
+- Why fixed synchronous prefetch can be actively harmful
 
 **C5: Position software vs. hardware disaggregation**
 
@@ -326,7 +327,7 @@ Trade-off: 1000x latency for zero cost and WAN reach.
 
 **PCLive (SoCC 2024)**: Pipelined restore (38.8x faster). Still migrates all memory eventually.
 
-**Our position**: Go beyond PCLive's pipelining to *persistent* remote execution.
+**Our position**: go beyond basic lazy restore by treating the post-restore period as a runtime-policy problem.
 
 ### 7.2 Memory Disaggregation
 
@@ -334,7 +335,7 @@ Trade-off: 1000x latency for zero cost and WAN reach.
 
 **RDMA** (Infiniswap, Fastswap): VM-level or swap-level, 100μs+, no process semantics.
 
-**Our position**: Software-defined, process-aware, cross-datacenter.
+**Our position**: software-defined, process-aware, userspace policy over restored processes rather than kernel swap replacement.
 
 ### 7.3 Distributed Shared Memory
 
@@ -421,14 +422,14 @@ def on_fault(addr):
     return fetch_batch([addr + i*4096 for i in range(N)])
 ```
 
-**Success**: Prefetch hit rate >50%.
+**Success**: asynchronous prefetch beats fixed synchronous prefetch on at least one workload without severely regressing the others.
 
 ### Week 9-10: Evaluation
 
 **Workloads**:
-1. Redis (YCSB workload A: 50/50 read/write)
+1. Redis (read-dominant service workload)
 2. PyTorch ResNet-50 inference
-3. NGINX static serving
+3. Synthetic loop / pointer-chasing restore workload
 
 **Baselines**:
 - Local execution (upper bound)
@@ -499,16 +500,16 @@ CDF
 
 ### 9.1 Research Questions
 
-**RQ1**: Can processes execute indefinitely with remote memory?
-- Measure: 1-hour uptime, crash rate, memory distribution
+**RQ1**: Can restored processes execute stably while serving missing pages remotely?
+- Measure: extended uptime, crash rate, memory distribution
 
 **RQ2**: What is time-to-first-request improvement?
 - Compare: CRIU (30-60s) vs. DistriProc (<1s)
 - **Careful wording**: "Time until process accepts requests" (not "startup" which implies full equivalence)
 
-**RQ3**: How much memory can be remote before performance degrades?
-- Vary: 10%, 30%, 50%, 70% remote
-- Plot: Throughput vs. remote %
+**RQ3**: When does adaptive policy beat fixed policy?
+- Vary: workload phase, prefetch aggressiveness, and network latency
+- Plot: TTFR / throughput / tail latency vs. policy choice
 
 **RQ4**: Which workloads are suitable?
 - Characterize: Locality, read/write ratio, access pattern
@@ -527,13 +528,13 @@ CDF
 
 ### 9.3 Expected Results
 
-**Hypothesis 1**: Time-to-first-request < 1s (vs. CRIU's 30-60s full migration)
+**Hypothesis 1**: Time-to-first-request remains < 1s for selected read-dominant workloads under lazy restore.
 
-**Hypothesis 2**: Throughput > 70% with 50% remote memory (read-heavy workloads)
+**Hypothesis 2**: Adaptive asynchronous policy outperforms fixed synchronous prefetch on TTFR and throughput.
 
-**Hypothesis 3**: Performance degrades linearly (not cliff) as remote % increases
+**Hypothesis 3**: Startup and steady-state phases favor different paging policies, so online adaptation outperforms any single fixed mode.
 
-**Hypothesis 4**: Read-heavy workloads (Redis, inference) outperform write-heavy
+**Hypothesis 4**: Read-heavy workloads with structured access patterns benefit more than irregular or write-heavy workloads.
 
 ### 9.4 Negative Results Policy
 
@@ -551,14 +552,14 @@ If throughput < 50%:
 ✅ Single source node
 ✅ TCP transport
 ✅ Read-heavy workloads
-✅ Write-through consistency
-✅ Sequential + stride prefetch
-✅ Redis + PyTorch + NGINX evaluation
+✅ Demand paging baseline
+✅ Asynchronous/adaptive prefetch policy
+✅ Redis + PyTorch + synthetic restore-time evaluation
 
 ### 10.2 Explicitly OUT of Scope (Future Work)
 
+❌ Writable remote-memory coherence
 ❌ RDMA transport
-❌ Write-back consistency
 ❌ Multi-node memory graphs
 ❌ Kubernetes integration
 ❌ ML-based prefetch
@@ -574,14 +575,14 @@ If throughput < 50%:
 ### 11.1 Technical Success
 
 **Minimum** (required for paper):
-- [ ] Process runs 1 hour with 50% remote memory
-- [ ] Time-to-first-request < 1s
-- [ ] Throughput > 50% of local
+- [ ] Process restores and runs stably under remote paging for an extended run
+- [ ] Time-to-first-request < 1s for at least two read-dominant workloads
+- [ ] Adaptive mode beats fixed synchronous prefetch on TTFR and throughput
 
 **Target** (strong paper):
-- [ ] Throughput > 70% of local
-- [ ] P99 latency < 2x local
-- [ ] Prefetch hit rate > 50%
+- [ ] Throughput near plain lazy baseline while reducing startup stalls
+- [ ] P99 latency < 2x plain lazy mode
+- [ ] Adaptive policy beats both fixed-off and fixed-on prefetch across multiple workloads
 
 ### 11.2 Academic Success
 
@@ -608,19 +609,20 @@ If throughput < 50%:
 Reality: 10-50μs with TCP (not 1-10μs we initially hoped)
 
 **Mitigation**:
-- Aggressive prefetching (sequential, stride)
-- Local caching (70% hit rate target)
-- Hot page eager fetch
+- Asynchronous prefetch instead of blocking per-fault prefetch
+- Local caching after first access
+- Hot page eager fetch for predictable startup state
 
 **Acceptable**: 100-500μs for cold pages (like disk I/O).
 
-**Risk 2: Write-through kills performance**
+**Risk 2: Fixed prefetch hurts more than it helps**
 
-Every write = 100-500μs network round-trip.
+The current prototype already shows that synchronous prefetch can create long restore stalls.
 
 **Mitigation**:
-- Target read-heavy workloads (>90% reads)
-- Explicitly out-of-scope: write-heavy DBs
+- Treat fixed prefetch only as a baseline
+- Build policy feedback around usefulness and stall cost
+- Disable prefetch aggressively when it becomes harmful
 
 **Risk 3: Working set > local memory → thrashing**
 
@@ -633,7 +635,7 @@ Every write = 100-500μs network round-trip.
 
 **Risk**: "Just CRIU lazy-pages"
 
-**Response**: We add optimizations + first academic evaluation + characterization of suitability.
+**Response**: We add a userspace policy runtime, not just another restore wrapper.
 
 **Risk**: "Latency unacceptable"
 
@@ -645,9 +647,9 @@ Every write = 100-500μs network round-trip.
 
 ---
 
-## 13. Abstract (150 words, HotOS-ready)
+## 13. Abstract (working draft)
 
-Linux processes are rigidly bound to local memory, forcing container migration to transfer entire address spaces before execution resumes. We present DistriProc, a system that enables processes to execute indefinitely with partially remote address spaces. DistriProc combines CRIU checkpoint/restore with userfaultfd-based on-demand paging to fetch memory pages over TCP as needed, rather than requiring upfront transfer. We implement a single-writer consistency model and demonstrate sub-second time-to-first-request compared to CRIU's 30-60 second full migration time. Our evaluation of Redis, PyTorch inference, and NGINX shows that read-heavy workloads achieve >70% throughput with 50% remote memory. We characterize which workloads tolerate remote paging and which do not, providing the first academic evaluation of CRIU's lazy-pages feature. DistriProc demonstrates that memory can be treated as a networked resource rather than a local requirement, enabling software-defined memory disaggregation over commodity networks.
+CRIU lazy restore can resume a Linux process before all of its memory has arrived, but today it offers little control over how missing pages should be fetched once execution resumes. We present DistriProc, a userspace runtime for post-restore remote memory built on CRIU and userfaultfd. DistriProc serves pages over TCP, observes restore-time page-fault behavior, and is designed to adapt among demand paging, asynchronous prefetch, and eager hot-page installation. Our current prototype and baseline evaluation show two motivating results: first, restored processes can achieve sub-second time-to-first-request on selected read-dominant workloads; second, fixed synchronous prefetch can reduce fault counts while still causing severe restore stalls and throughput collapse. These results motivate an adaptive policy runtime rather than a single fixed paging strategy. DistriProc targets the gap between mechanism and policy in process-level lazy restore and aims to characterize when adaptive post-restore paging is beneficial for real Linux workloads.
 
 ---
 
@@ -985,7 +987,7 @@ END {
 
 ---
 
-> *We show that Linux processes can execute indefinitely with partially remote address spaces, turning memory into a networked resource rather than a local requirement.*
+> *We show that restored Linux processes can benefit from an adaptive remote-memory phase, where paging policy after restore is chosen online rather than fixed in advance.*
 
 ---
 
