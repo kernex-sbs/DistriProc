@@ -51,7 +51,7 @@
 #define HISTORY_SIZE 8
 #define MAX_PREFETCH_TARGETS 64
 #define EAGER_BATCH_SIZE 32
-#define PREFETCH_QUEUE_SIZE 1024
+#define PREFETCH_QUEUE_SIZE 8192
 
 /* ── Global state ─────────────────────────────────────── */
 
@@ -506,7 +506,7 @@ static void async_prefetch_snapshot(struct async_prefetch_ctx *ctx,
 static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
 					 struct adaptive_window *window)
 {
-	const uint64_t min_faults = 64;
+	const uint64_t min_faults = 128;
 	uint64_t duplicate_rate = 0;
 	int old_enabled;
 	int old_seq;
@@ -530,19 +530,18 @@ static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
 			pcfg->cooldown_windows--;
 		if (pcfg->cooldown_windows == 0) {
 			pcfg->enabled = 1;
-			pcfg->seq_count = 2;   /* Start small to probe */
-			pcfg->stride_count = 1;
+			pcfg->seq_count = 1;   /* Ultra-small probe */
+			pcfg->stride_count = 0;
 			changed = 1;
 		}
 	} else if (window->dropped > 0 ||
 		   window->queue_depth > (PREFETCH_QUEUE_SIZE / 2) ||
 		   (window->prefetched > 0 &&
-		    duplicate_rate >= 80 &&
-		    (pcfg->seq_count <= 4 || pcfg->stride_count <= 2))) {
+		    duplicate_rate >= 80)) {
 		pcfg->seq_count = 0;
 		pcfg->stride_count = 0;
 		pcfg->enabled = 0;
-		pcfg->cooldown_windows = 2;
+		pcfg->cooldown_windows = 16;
 		changed = 1;
 	} else if (window->dropped > 0 ||
 		   window->queue_depth > (PREFETCH_QUEUE_SIZE / 4) ||
@@ -555,13 +554,13 @@ static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
 			pcfg->stride_count = 0;
 		if (pcfg->seq_count == 0 && pcfg->stride_count == 0) {
 			pcfg->enabled = 0;
-			pcfg->cooldown_windows = 2;
+			pcfg->cooldown_windows = 16;
 		}
 		changed = 1;
 	} else if (window->prefetched > 0 &&
 		   window->duplicates == 0 &&
 		   window->dropped == 0 &&
-		   window->queue_depth < (PREFETCH_QUEUE_SIZE / 16)) {
+		   window->queue_depth < (PREFETCH_QUEUE_SIZE / 32)) {
 		if (pcfg->seq_count < pcfg->max_seq_count) {
 			pcfg->seq_count += 2;
 			if (pcfg->seq_count > pcfg->max_seq_count)
