@@ -3,7 +3,7 @@
 #
 # Usage: sudo bash eval/bench.sh [OPTIONS]
 #   --workloads LIST    Comma-separated (default: test_loop,redis,pytorch)
-#   --modes LIST        Comma-separated (default: full,lazy,lazy-prefetch,lazy-hot)
+#   --modes LIST        Comma-separated (default: full,lazy,lazy-prefetch,lazy-adaptive,lazy-hot)
 #   --iterations N      Runs per config (default: 5)
 #   --output-dir DIR    Results directory (default: eval/results)
 set -euo pipefail
@@ -22,7 +22,7 @@ fi
 # ── Defaults ────────────────────────────────────────────────────────────────
 
 WORKLOADS="test_loop,redis,pytorch"
-MODES="full,lazy,lazy-prefetch,lazy-hot"
+MODES="full,lazy,lazy-prefetch,lazy-adaptive,lazy-hot"
 ITERATIONS=5
 OUTPUT_DIR="$ROOT_DIR/eval/results"
 
@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
         --help|-h)
             echo "Usage: sudo bash $0 [OPTIONS]"
             echo "  --workloads LIST    Comma-separated (default: test_loop,redis,pytorch)"
-            echo "  --modes LIST        Comma-separated (default: full,lazy,lazy-prefetch,lazy-hot)"
+            echo "  --modes LIST        Comma-separated (default: full,lazy,lazy-prefetch,lazy-adaptive,lazy-hot)"
             echo "  --iterations N      Runs per config (default: 5)"
             echo "  --output-dir DIR    Results directory (default: eval/results)"
             exit 0
@@ -100,6 +100,7 @@ handler_args_for_mode() {
         full)           echo "__FULL__" ;;
         lazy)           echo "--no-prefetch" ;;
         lazy-prefetch)  echo "--prefetch-seq 16 --prefetch-stride 8" ;;
+        lazy-adaptive)  echo "--prefetch-seq 16 --prefetch-stride 8 --adaptive-prefetch" ;;
         lazy-hot)       echo "--prefetch-seq 16 --prefetch-stride 8" ;;
         *)              echo "ERROR: unknown mode $mode" >&2; return 1 ;;
     esac

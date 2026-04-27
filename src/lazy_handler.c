@@ -61,12 +61,26 @@ struct prefetch_config {
 	int seq_count;       /* sequential pages to prefetch (default 16) */
 	int stride_count;    /* stride-predicted pages to prefetch (default 8) */
 	int enabled;         /* 0 if --no-prefetch */
+	int adaptive;        /* 1 if policy adjusts counts online */
+	int base_seq_count;  /* initial sequential window */
+	int base_stride_count; /* initial stride window */
+	int max_seq_count;   /* upper bound for adaptive growth */
+	int max_stride_count; /* upper bound for adaptive growth */
+	int cooldown_windows; /* windows to keep prefetch off before retry */
 };
 
 struct prefetch_stats {
 	uint64_t total_faults;
 	uint64_t prefetch_hits;
 	uint64_t pages_prefetched;
+};
+
+struct adaptive_window {
+	uint64_t faults;
+	uint64_t hits;
+	uint64_t prefetched;
+	uint64_t dropped;
+	uint64_t duplicates;
 };
 
 struct fault_history {
@@ -456,6 +470,96 @@ static void async_prefetch_stop(struct async_prefetch_ctx *ctx)
 	pthread_mutex_unlock(&ctx->mu);
 }
 
+static void async_prefetch_snapshot(struct async_prefetch_ctx *ctx,
+				    uint64_t *prefetched,
+				    uint64_t *dropped,
+				    uint64_t *duplicates)
+{
+	pthread_mutex_lock(&ctx->mu);
+	*prefetched = ctx->pages_prefetched;
+	*dropped = ctx->dropped_requests;
+	*duplicates = ctx->skipped_duplicates;
+	pthread_mutex_unlock(&ctx->mu);
+}
+
+static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
+					 struct adaptive_window *window)
+{
+	const uint64_t min_faults = 64;
+	uint64_t hit_rate = 0;
+	int old_enabled;
+	int old_seq;
+	int old_stride;
+	int changed = 0;
+
+	if (!pcfg->adaptive || window->faults < min_faults)
+		return;
+
+	if (window->faults > 0)
+		hit_rate = (window->hits * 100) / window->faults;
+
+	old_enabled = pcfg->enabled;
+	old_seq = pcfg->seq_count;
+	old_stride = pcfg->stride_count;
+
+	if (!pcfg->enabled) {
+		if (pcfg->cooldown_windows > 0)
+			pcfg->cooldown_windows--;
+		if (pcfg->cooldown_windows == 0) {
+			pcfg->enabled = 1;
+			pcfg->seq_count = pcfg->base_seq_count;
+			pcfg->stride_count = pcfg->base_stride_count;
+			changed = 1;
+		}
+	} else if (window->dropped > 0 || (window->prefetched > 0 && hit_rate < 5)) {
+		pcfg->seq_count /= 2;
+		pcfg->stride_count /= 2;
+		if (pcfg->seq_count < 1)
+			pcfg->seq_count = 0;
+		if (pcfg->stride_count < 1)
+			pcfg->stride_count = 0;
+		if (pcfg->seq_count == 0 && pcfg->stride_count == 0) {
+			pcfg->enabled = 0;
+			pcfg->cooldown_windows = 2;
+		}
+		changed = 1;
+	} else if (window->prefetched > 0 && hit_rate >= 20 && window->dropped == 0) {
+		if (pcfg->seq_count < pcfg->max_seq_count) {
+			pcfg->seq_count += 2;
+			if (pcfg->seq_count > pcfg->max_seq_count)
+				pcfg->seq_count = pcfg->max_seq_count;
+		}
+		if (pcfg->stride_count < pcfg->max_stride_count) {
+			pcfg->stride_count += 1;
+			if (pcfg->stride_count > pcfg->max_stride_count)
+				pcfg->stride_count = pcfg->max_stride_count;
+		}
+		changed = 1;
+	}
+
+	if (changed) {
+		printf("Policy: faults=%lu hits=%lu prefetched=%lu drops=%lu dup=%lu hit_rate=%lu%% => prefetch=%s seq %d->%d stride %d->%d\n",
+		       (unsigned long)window->faults,
+		       (unsigned long)window->hits,
+		       (unsigned long)window->prefetched,
+		       (unsigned long)window->dropped,
+		       (unsigned long)window->duplicates,
+		       (unsigned long)hit_rate,
+		       pcfg->enabled ? "on" : "off",
+		       old_seq, pcfg->seq_count,
+		       old_stride, pcfg->stride_count);
+		if (old_enabled != pcfg->enabled && !pcfg->enabled) {
+			printf("Policy: prefetch disabled for %d window(s)\n",
+			       pcfg->cooldown_windows);
+		}
+		if (old_enabled != pcfg->enabled && pcfg->enabled) {
+			printf("Policy: prefetch re-enabled at base window\n");
+		}
+	}
+
+	memset(window, 0, sizeof(*window));
+}
+
 static void *async_prefetch_thread(void *arg)
 {
 	struct async_prefetch_ctx *ctx = (struct async_prefetch_ctx *)arg;
@@ -596,7 +700,7 @@ done:
 /* ── Main page-fault handling loop ────────────────────── */
 
 static int handle_faults(int uffd, int conn_fd, int tcp_fd,
-			 const struct prefetch_config *pcfg,
+			 struct prefetch_config *pcfg,
 			 const char *hot_pages_file,
 			 const char *address, int port)
 {
@@ -608,6 +712,10 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 	struct served_state served;
 	struct fault_history history;
 	struct prefetch_stats stats;
+	struct adaptive_window window;
+	uint64_t last_prefetched = 0;
+	uint64_t last_dropped = 0;
+	uint64_t last_duplicates = 0;
 	pthread_t eager_tid = 0;
 	struct eager_ctx ectx;
 	int eager_started = 0;
@@ -621,6 +729,7 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 
 	memset(&history, 0, sizeof(history));
 	memset(&stats, 0, sizeof(stats));
+	memset(&window, 0, sizeof(window));
 
 	if (posix_memalign((void **)&page, PAGE_SIZE, PAGE_SIZE) != 0) {
 		perror("posix_memalign");
@@ -728,10 +837,12 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 			uint64_t page_addr = fault_addr & ~(PAGE_SIZE - 1UL);
 
 			stats.total_faults++;
+			window.faults++;
 
 			/* Already served (by prefetch or eager fetch)? */
 			if (served_contains(&served, page_addr)) {
 				stats.prefetch_hits++;
+				window.hits++;
 				/* Still need to resolve the fault — the page is
 				 * installed but uffd may still be blocking.
 				 * Just do a zero-copy UFFDIO_COPY which will
@@ -797,6 +908,21 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 				       (unsigned long)page_addr,
 				       nprefetch);
 			}
+
+			if (pcfg->adaptive && window.faults >= 64) {
+				uint64_t total_prefetched;
+				uint64_t total_dropped;
+				uint64_t total_duplicates;
+				async_prefetch_snapshot(&prefetch_ctx, &total_prefetched,
+							&total_dropped, &total_duplicates);
+				window.prefetched = total_prefetched - last_prefetched;
+				window.dropped = total_dropped - last_dropped;
+				window.duplicates = total_duplicates - last_duplicates;
+				maybe_adjust_prefetch_policy(pcfg, &window);
+				last_prefetched = total_prefetched;
+				last_dropped = total_dropped;
+				last_duplicates = total_duplicates;
+			}
 		}
 
 		/* uffd hung up */
@@ -815,7 +941,14 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 	if (eager_started)
 		pthread_join(eager_tid, NULL);
 
-	stats.pages_prefetched = prefetch_ctx.pages_prefetched;
+	{
+		uint64_t total_prefetched;
+		uint64_t total_dropped;
+		uint64_t total_duplicates;
+		async_prefetch_snapshot(&prefetch_ctx, &total_prefetched,
+					&total_dropped, &total_duplicates);
+		stats.pages_prefetched = total_prefetched;
+	}
 
 	/* Print stats */
 	uint64_t hit_rate = 0;
@@ -850,6 +983,7 @@ static void usage(const char *prog)
 	fprintf(stderr,
 		"Usage: %s --images-dir DIR --address ADDR --port PORT\n"
 		"          [--prefetch-seq N] [--prefetch-stride N] [--no-prefetch]\n"
+		"          [--adaptive-prefetch]\n"
 		"          [--hot-pages FILE]\n"
 		"\n"
 		"Custom lazy-pages daemon for CRIU restore.\n"
@@ -859,6 +993,7 @@ static void usage(const char *prog)
 		"  --prefetch-seq N       Sequential pages to prefetch (default 16)\n"
 		"  --prefetch-stride N    Stride-predicted pages to prefetch (default 8)\n"
 		"  --no-prefetch          Disable all prefetching\n"
+		"  --adaptive-prefetch    Adjust prefetch windows online\n"
 		"  --hot-pages FILE       Binary file of hot page addresses to eagerly fetch\n",
 		prog);
 }
@@ -875,6 +1010,12 @@ int main(int argc, char *argv[])
 		.seq_count = 16,
 		.stride_count = 8,
 		.enabled = 1,
+		.adaptive = 0,
+		.base_seq_count = 16,
+		.base_stride_count = 8,
+		.max_seq_count = 32,
+		.max_stride_count = 16,
+		.cooldown_windows = 0,
 	};
 
 	static struct option long_opts[] = {
@@ -884,12 +1025,13 @@ int main(int argc, char *argv[])
 		{"prefetch-seq",    required_argument, 0, 's'},
 		{"prefetch-stride", required_argument, 0, 'S'},
 		{"no-prefetch",     no_argument,       0, 'n'},
+		{"adaptive-prefetch", no_argument,     0, 'A'},
 		{"hot-pages",       required_argument, 0, 'H'},
 		{"help",            no_argument,       0, 'h'},
 		{0, 0, 0, 0}
 	};
 
-	while ((opt = getopt_long(argc, argv, "d:a:p:h", long_opts, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "d:a:p:s:S:nAHh", long_opts, NULL)) != -1) {
 		switch (opt) {
 		case 'd':
 			images_dir = optarg;
@@ -902,12 +1044,17 @@ int main(int argc, char *argv[])
 			break;
 		case 's':
 			pcfg.seq_count = atoi(optarg);
+			pcfg.base_seq_count = pcfg.seq_count;
 			break;
 		case 'S':
 			pcfg.stride_count = atoi(optarg);
+			pcfg.base_stride_count = pcfg.stride_count;
 			break;
 		case 'n':
 			pcfg.enabled = 0;
+			break;
+		case 'A':
+			pcfg.adaptive = 1;
 			break;
 		case 'H':
 			hot_pages_file = optarg;
@@ -929,8 +1076,9 @@ int main(int argc, char *argv[])
 	signal(SIGINT, signal_handler);
 	signal(SIGPIPE, SIG_IGN);
 
-	printf("Config: prefetch=%s seq=%d stride=%d hot_pages=%s\n",
+	printf("Config: prefetch=%s adaptive=%s seq=%d stride=%d hot_pages=%s\n",
 	       pcfg.enabled ? "on" : "off",
+	       pcfg.adaptive ? "on" : "off",
 	       pcfg.seq_count, pcfg.stride_count,
 	       hot_pages_file ? hot_pages_file : "(none)");
 
