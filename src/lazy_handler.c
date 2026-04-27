@@ -301,6 +301,24 @@ static int target_list_contains(const uint64_t *targets, int ntargets, uint64_t 
 	return 0;
 }
 
+static const char *uffd_event_name(__u8 event)
+{
+	switch (event) {
+	case UFFD_EVENT_PAGEFAULT:
+		return "PAGEFAULT";
+	case UFFD_EVENT_FORK:
+		return "FORK";
+	case UFFD_EVENT_REMAP:
+		return "REMAP";
+	case UFFD_EVENT_REMOVE:
+		return "REMOVE";
+	case UFFD_EVENT_UNMAP:
+		return "UNMAP";
+	default:
+		return "UNKNOWN";
+	}
+}
+
 static void served_insert(struct served_state *served, uint64_t addr)
 {
 	pthread_mutex_lock(&served->mu);
@@ -829,7 +847,24 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 			}
 
 			if (msg.event != UFFD_EVENT_PAGEFAULT) {
-				fprintf(stderr, "Unexpected uffd event: %d\n", msg.event);
+				switch (msg.event) {
+				case UFFD_EVENT_UNMAP:
+					printf("userfaultfd event: %s\n",
+					       uffd_event_name(msg.event));
+					if (restore_finished)
+						goto done;
+					break;
+				case UFFD_EVENT_REMOVE:
+				case UFFD_EVENT_REMAP:
+				case UFFD_EVENT_FORK:
+					printf("userfaultfd event: %s\n",
+					       uffd_event_name(msg.event));
+					break;
+				default:
+					fprintf(stderr, "Unexpected uffd event: %u (%s)\n",
+						msg.event, uffd_event_name(msg.event));
+					break;
+				}
 				continue;
 			}
 
@@ -932,6 +967,7 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 		}
 	}
 
+done:
 	if (prefetch_started) {
 		async_prefetch_stop(&prefetch_ctx);
 		pthread_join(prefetch_ctx.tid, NULL);
