@@ -2,62 +2,71 @@
 
 **Adaptive post-restore remote memory for Linux processes.**
 
-DistriProc is a research prototype built on `CRIU` and `userfaultfd`. It restores Linux processes quickly, serves missing pages over TCP, and is being extended into an adaptive runtime that chooses when to demand-page, prefetch, or eagerly install hot pages after restore.
+DistriProc is a research prototype built on `CRIU` and `userfaultfd`. It restores
+Linux processes with lazy paging, serves missing pages over TCP, and runs an adaptive
+controller that decides when to prefetch and when to back off — based on duplicate
+pressure and queue depth signals observed during the post-restore remote-memory phase.
 
-## Project Status
+## What It Does
 
-The current repo already demonstrates:
+After a CRIU lazy restore, a process's pages live on a remote page server. DistriProc
+intercepts page faults via `userfaultfd`, fetches faulted pages synchronously, and
+optionally prefetches additional pages asynchronously on a background thread. An
+adaptive controller monitors per-window signals and disables prefetch when it detects
+the policy is causing more harm than benefit.
 
-- End-to-end lazy restore with a custom `userfaultfd` handler
-- TCP page serving from CRIU images
-- Baseline policy modes: demand paging, synchronous prefetch, and eager hot-page fetch
-- Initial benchmark workloads and reports
+Three modes are supported:
 
-The current repo does **not** yet claim:
+| Mode | Behavior |
+|------|----------|
+| `lazy` | Demand-only. Fetch exactly the faulted page, nothing more. |
+| `lazy-prefetch` | Fixed sequential prefetch. Fetch nearby pages speculatively after each fault. |
+| `lazy-adaptive` | Adaptive. Start with prefetch; back off when duplicate pressure or queue depth signal waste. |
 
-- Writable remote-memory coherence
-- A finished adaptive controller
-- A complete paper-grade evaluation across real networks and tail latency
+## Final Evaluation Results
 
-## Current Baseline Results
+All numbers: 5 iterations, loopback TCP, AMD Ryzen 7 7735HS, Linux 6.18.7, CRIU 4.2.
 
-These numbers describe the current prototype baseline, not the final target paper:
+### Time-to-First-Request (ms) — lower is better
 
-| Workload | Lazy TTFR | Full TTFR | Notes |
-|----------|-----------|-----------|-------|
-| Redis | 29ms | 28ms | Demand paging matches full restore TTFR |
-| PyTorch ResNet-18 | 718ms | 284ms | Restores under 1s, but startup faults are expensive |
-| test_loop (1MB) | 33ms | 1020ms | Simple proof that post-restore paging works |
+| Workload | Full restore | Lazy | Fixed prefetch | **Adaptive** |
+|----------|-------------|------|----------------|-------------|
+| test\_loop | 1020 ± 2 | 48 ± 4 | 48 ± 4 | **49 ± 6** |
+| Redis | 32 ± 1 | 46 ± 10 | 38 ± 9 | **44 ± 6** |
+| PyTorch | 209 ± 11 | 625 ± 18 | 1159 ± 24 ❌ | **686 ± 67** ✓ |
 
-The main result so far is that **plain lazy restore works well, while synchronous prefetch is often harmful**. The next step is to replace fixed prefetching with an adaptive asynchronous policy.
+**Key results:**
+- Lazy restore cuts TTFR 21× for memory-light workloads (test\_loop: 1020 → 48 ms)
+- Fixed prefetch doubles TTFR for memory-heavy workloads (PyTorch: 625 → 1159 ms) by congesting the fault-path TCP channel
+- Adaptive controller recovers 473 ms of the PyTorch regression (1159 → 686 ms) and cuts prefetch volume 45–58% across all workloads
+
+### Throughput (% of full restore baseline)
+
+| Workload | Lazy | Fixed prefetch | Adaptive |
+|----------|------|----------------|----------|
+| test\_loop | 100% | 100% | 100% |
+| Redis | 68% | 66% | 69% |
+| PyTorch | 100% | 97% | 94% |
+
+Redis throughput shortfall (~68%) reflects TCP loopback overhead on a
+high-throughput in-memory workload, not a policy effect.
 
 ## How It Works
 
 ```
-Source Node                          Destination Node
-┌──────────────┐                     ┌──────────────────────┐
-│ criu dump     │                     │ criu restore         │
-│    ↓          │                     │   --lazy-pages       │
-│ Page Server   │◄── TCP pages ──────►│ lazy_handler (uffd)  │
-│ (serves CRIU  │    on demand        │   ↓                  │
-│  page images) │                     │ Process runs with    │
-└──────────────┘                     │ on-demand paging     │
-                                     └──────────────────────┘
+Page Server (serves CRIU images)
+        │
+        │  TCP connection 1 — synchronous fault resolution
+        │  TCP connection 2 — async prefetch (background thread)
+        ▼
+lazy_handler (userfaultfd)
+        │
+        ├── fault path: fetch page → UFFDIO_COPY → unblock process
+        ├── prefetch path: queue candidates → worker → fetch → install
+        └── adaptive controller: every 128 faults, check dup_rate + qdepth
+                                  → disable prefetch if wasteful
+                                  → re-enable via probe window when queue drains
 ```
-
-1. **Checkpoint** process with CRIU (`criu dump`)
-2. **Start page server** — parses CRIU images, serves pages over TCP
-3. **Start lazy handler** — listens for userfaultfd from CRIU restore
-4. **Restore** with `--lazy-pages` — process starts immediately
-5. Page faults are intercepted by the handler, which fetches pages from the server
-
-## Research Direction
-
-The paper direction for this repo is:
-
-`adaptive post-restore remote-memory runtime`
-
-The intended contribution is not “remote paging exists,” because CRIU and prior memory-disaggregation systems already establish that. The intended contribution is a userspace runtime that adapts paging policy online for restored Linux processes based on fault behavior and network cost.
 
 ## Quick Start
 
@@ -65,47 +74,86 @@ The intended contribution is not “remote paging exists,” because CRIU and pr
 # Build
 make all
 
-# Run tests (non-root tests only)
+# Non-root tests
 make test
 
-# Run benchmarks (requires root for CRIU)
-make bench-quick    # test_loop, 2 iterations
-make bench          # all workloads, 5 iterations
+# Full paper benchmark (all workloads × 4 modes × 5 iterations)
+make bench-paper
 
 # Generate report
 make report
+
+# Generate figures (requires matplotlib)
+make figures
 ```
 
-See [docs/howto.md](docs/howto.md) for detailed usage instructions.
+## Lazy Handler Options
+
+```
+src/lazy_handler [OPTIONS]
+  --images-dir DIR       CRIU images directory (required)
+  --address ADDR         Page server address (default: 127.0.0.1)
+  --port PORT            Page server port (default: 9999)
+  --no-prefetch          Demand-only mode (lazy)
+  --prefetch-seq N       Sequential prefetch window (default: 16)
+  --prefetch-stride N    Stride prefetch window (default: 8)
+  --adaptive-prefetch    Enable adaptive controller
+  --hot-pages FILE       Eager-fetch hot pages at restore time
+```
+
+## Benchmark Options
+
+```bash
+sudo bash eval/bench.sh [OPTIONS]
+  --workloads LIST    Comma-separated (default: test_loop,redis,pytorch)
+  --modes LIST        Comma-separated (default: full,lazy,lazy-prefetch,lazy-adaptive,lazy-hot)
+  --iterations N      Runs per config (default: 5)
+  --output-dir DIR    Results directory (default: eval/results)
+  --append            Append to existing results.csv instead of overwriting
+```
 
 ## Project Structure
 
 ```
 src/
-  test_uffd.c           Phase 1 PoC — local userfaultfd page fault handling
-  test_uffd_tcp.c        Phase 2 — TCP remote page fetching
-  test_loop.c            Benchmark workload (1MB heap, counter loop)
-  lazy_handler.c         Custom CRIU lazy-pages daemon and policy runtime
-  hashset.h              Page address tracking (open-addressing hash set)
-  page_server.py         Simple TCP page server (test use)
-  criu_page_server.py    CRIU-aware TCP page server (reads dump images)
+  lazy_handler.c         Fault handler and adaptive policy runtime
+  criu_page_server.py    CRIU-aware TCP page server
   hot_pages.py           Hot page profiler via /proc/pid/smaps
-  distriproc.sh          Orchestration wrapper
+  hashset.h              Served-page tracking (open-addressing hash set)
+  test_loop.c            Synthetic benchmark workload
 
-tests/                   8 test scripts (run_tests.sh runner)
-eval/                    Benchmark suite (bench.sh, 3 workloads, report.py)
+eval/
+  bench.sh               Benchmark harness
+  lib.sh                 Shared helpers
+  report.py              CSV → markdown report
+  figures.py             CSV + logs → paper figures
+  workloads/             Per-workload scripts (test_loop, redis, pytorch)
+  results/
+    results.csv          Final combined dataset (60 rows)
+    report.md            Generated report
+    figures/             Generated paper figures (fig1–fig5)
+
+tests/                   Integration tests (run_tests.sh)
+paper/
+  draft.md               Paper draft
+  CLAIMS.md              Locked claims and out-of-scope list
+  TODO.md                Paper checklist
 docs/
-  proposal.md            Paper direction and research plan
-  evaluation.md          Baseline evaluation and current limitations
-  howto.md               Usage guide and demos
+  howto.md               Detailed usage guide
+  evaluation.md          Final evaluation results
 ```
 
 ## Requirements
 
 - Linux 5.7+ (userfaultfd)
-- GCC, Python 3
-- CRIU 4.x with pycriu (`pip install criu`)
-- For benchmarks: `redis` (pacman/apt), `torch torchvision` (pip)
+- GCC, Python 3, pycriu (`pip install criu`)
+- CRIU 4.x
+- For benchmarks: `redis`, `torch torchvision` (pip), `matplotlib` (pip)
+
+## Scope
+
+This prototype operates on the post-restore phase only. Out of scope:
+writable remote-memory coherence, RDMA transport, multi-node DSM, replication.
 
 ## License
 

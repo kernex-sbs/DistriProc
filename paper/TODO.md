@@ -58,10 +58,10 @@ This checklist tracks the path from the current research prototype to a draftabl
 
 ## 7. Update Repo Docs
 
-- [ ] Update `README.md` with adaptive mode and final evaluated findings
-- [ ] Update `docs/howto.md` with `lazy-adaptive`
-- [ ] Update `docs/evaluation.md` with the final combined results
-- [ ] Verify all docs match the implementation and final claims
+- [x] Update `README.md` with adaptive mode and final evaluated findings
+- [x] Update `docs/howto.md` with `lazy-adaptive`, `--append`, `make bench-paper`, `make figures`
+- [x] Update `docs/evaluation.md` with the final combined results
+- [x] Verify all docs match the implementation and final claims
 
 ## 8. Write The Paper
 

@@ -6,36 +6,31 @@
 make all
 ```
 
-This produces four binaries in `src/`:
-- `test_uffd` — userfaultfd PoC (local page faults)
-- `test_uffd_tcp` — userfaultfd + TCP page fetching
-- `test_loop` — simple workload for testing (1MB heap, counter)
-- `lazy_handler` — custom CRIU lazy-pages daemon
+Produces binaries in `src/`:
+- `test_loop` — synthetic benchmark workload (1MB heap, counter loop)
+- `lazy_handler` — CRIU lazy-pages daemon and adaptive policy runtime
+- `test_uffd`, `test_uffd_tcp` — userfaultfd proof-of-concept tools
 
 ## 2. Running Tests
 
 ```bash
-make test
-```
-
-Non-root tests run automatically. CRIU tests require root:
-
-```bash
-sudo bash tests/run_tests.sh
+make test          # non-root tests
+sudo bash tests/run_tests.sh           # all tests including CRIU paths
+sudo bash tests/test_adaptive_prefetch.sh   # adaptive controller integration test
 ```
 
 ## 3. Lazy Restore Walkthrough
 
-This demonstrates the full DistriProc pipeline: checkpoint a process, serve its pages over TCP, and restore it with on-demand paging.
+Full end-to-end pipeline: checkpoint a process, serve its pages over TCP, restore with
+on-demand or adaptive paging.
 
 ### Step 1: Start a workload
 
 ```bash
 setsid src/test_loop --output /tmp/counter &
 LOOP_PID=$!
-# Wait for it to warm up
 sleep 3
-cat /tmp/counter   # Should show 2 or 3
+cat /tmp/counter   # should show 2 or 3
 ```
 
 ### Step 2: Checkpoint
@@ -46,38 +41,40 @@ mkdir -p $DUMP_DIR
 sudo criu dump -t $LOOP_PID -D $DUMP_DIR -j -v4 --log-file dump.log
 ```
 
-The process is now frozen. Its memory is saved in `$DUMP_DIR/pages-*.img`.
-
-### Step 3: Start the page server
+### Step 3: Start page server
 
 ```bash
 python3 src/criu_page_server.py --images-dir $DUMP_DIR --port 9999 &
 ```
 
-This parses the CRIU dump images and serves pages over TCP.
+### Step 4: Start lazy handler (choose a mode)
 
-### Step 4: Start the lazy handler
-
+**Demand-only (lowest overhead):**
 ```bash
-sudo src/lazy_handler --images-dir $DUMP_DIR --address 127.0.0.1 --port 9999 --no-prefetch &
+sudo src/lazy_handler --images-dir $DUMP_DIR --address 127.0.0.1 --port 9999 \
+    --no-prefetch &
 ```
 
-The handler listens on a Unix socket for CRIU restore to connect. When a page fault occurs, it fetches the page from the TCP server and installs it.
+**Fixed prefetch:**
+```bash
+sudo src/lazy_handler --images-dir $DUMP_DIR --address 127.0.0.1 --port 9999 \
+    --prefetch-seq 16 --prefetch-stride 8 &
+```
 
-### Step 5: Restore with lazy pages
+**Adaptive (recommended for unknown workloads):**
+```bash
+sudo src/lazy_handler --images-dir $DUMP_DIR --address 127.0.0.1 --port 9999 \
+    --prefetch-seq 16 --prefetch-stride 8 --adaptive-prefetch &
+```
+
+### Step 5: Restore
 
 ```bash
-rm -f /tmp/counter
 cd $DUMP_DIR
 sudo criu restore --lazy-pages -D $DUMP_DIR -j -d --pidfile restore.pid
 cd -
-```
-
-The process resumes immediately. Watch the counter:
-
-```bash
 sleep 2
-cat /tmp/counter   # Counter is advancing again
+cat /tmp/counter   # counter advancing again
 ```
 
 ### Step 6: Cleanup
@@ -87,140 +84,153 @@ kill $(cat $DUMP_DIR/restore.pid) 2>/dev/null
 sudo rm -rf $DUMP_DIR /tmp/counter
 ```
 
-## 4. Lazy Handler Options
+## 4. Lazy Handler Reference
 
 ```
 src/lazy_handler [OPTIONS]
   --images-dir DIR       CRIU images directory (required)
   --address ADDR         Page server address (default: 127.0.0.1)
   --port PORT            Page server port (default: 9999)
-  --no-prefetch          Disable all prefetching (best for most workloads)
+  --no-prefetch          Demand-only mode — fetch exactly the faulted page
   --prefetch-seq N       Sequential pages to prefetch per fault (default: 16)
   --prefetch-stride N    Stride-predicted pages to prefetch (default: 8)
-  --hot-pages FILE       Binary file of hot page addresses for eager fetch
+  --adaptive-prefetch    Enable adaptive controller (use with --prefetch-seq/stride)
+  --hot-pages FILE       Binary file of hot page addresses for eager fetch at restore time
 ```
 
-### Recommended configurations
+### Mode summary
 
-**Best for most workloads** (lowest TTFR, highest throughput):
-```bash
-lazy_handler --images-dir DIR --address ADDR --port PORT --no-prefetch
+| Flag combination | Mode | Best for |
+|-----------------|------|----------|
+| `--no-prefetch` | `lazy` | Memory-heavy workloads; unknown workloads |
+| `--prefetch-seq 16 --prefetch-stride 8` | `lazy-prefetch` | Memory-light, sequential access |
+| `--prefetch-seq 16 --prefetch-stride 8 --adaptive-prefetch` | `lazy-adaptive` | Default recommendation for mixed workloads |
+
+### Adaptive controller behavior
+
+With `--adaptive-prefetch`, the controller runs every 128 faults and checks:
+- **Duplicate rate**: fraction of prefetch requests for already-served pages
+- **Queue depth**: outstanding prefetch requests in the async queue
+
+If either signal exceeds threshold, prefetch is disabled. It re-enables via a small
+probe window once the queue drains. Handler logs show per-window decisions:
+
+```
+Policy: faults=128 hits=0 prefetched=80 drops=0 dup=294 dup_rate=78% qdepth=3288 => prefetch=on
+Policy: faults=128 hits=0 prefetched=0 drops=0 dup=191 dup_rate=100% qdepth=3552 => prefetch=on
+Policy: faults=128 hits=0 prefetched=0 drops=0 dup=46 dup_rate=100% qdepth=3796 => prefetch=off
 ```
 
-**With prefetching** (reduces fault count but adds latency per fault):
-```bash
-lazy_handler --images-dir DIR --address ADDR --port PORT \
-    --prefetch-seq 16 --prefetch-stride 8
-```
+## 5. Benchmarks
 
-**With hot page eager fetch** (pre-loads profiled pages at restore time):
-```bash
-# First, profile the running process
-sudo python3 src/hot_pages.py --pid $PID --output /tmp/hot.bin --samples 3 --interval 1
-
-# Then checkpoint and restore with hot pages
-lazy_handler --images-dir DIR --address ADDR --port PORT \
-    --prefetch-seq 16 --prefetch-stride 8 --hot-pages /tmp/hot.bin
-```
-
-## 5. Running Benchmarks
-
-### Quick smoke test (test_loop only)
-
-```bash
-make bench-quick
-```
-
-### Full benchmark (test_loop + Redis + PyTorch)
+### Final paper benchmark (all workloads × 4 modes × 5 iterations)
 
 ```bash
-make bench
+make bench-paper
 ```
 
-Prerequisites for full benchmark:
+This runs `test_loop`, `redis`, and `pytorch` across `full`, `lazy`, `lazy-prefetch`,
+and `lazy-adaptive` modes. Results written to `eval/results/results.csv`.
+
+### Partial runs with accumulation
+
+Run one workload at a time and accumulate results:
+
 ```bash
-sudo pacman -S redis                    # or: apt install redis-server
-pip install torch torchvision           # PyTorch for inference workload
+# Start fresh
+sudo bash eval/bench.sh --workloads test_loop --modes lazy,lazy-prefetch,lazy-adaptive \
+    --iterations 5 --output-dir eval/results
+
+# Append redis without overwriting test_loop results
+sudo bash eval/bench.sh --workloads redis --modes lazy,lazy-prefetch,lazy-adaptive \
+    --iterations 5 --output-dir eval/results --append
+
+# Append pytorch
+sudo bash eval/bench.sh --workloads pytorch --modes full,lazy,lazy-prefetch,lazy-adaptive \
+    --iterations 5 --output-dir eval/results --append
 ```
 
-### Options
+### Quick smoke test
+
+```bash
+make bench-quick    # test_loop only, 2 iterations
+```
+
+### All bench.sh options
 
 ```bash
 sudo bash eval/bench.sh [OPTIONS]
   --workloads LIST    Comma-separated (default: test_loop,redis,pytorch)
-  --modes LIST        Comma-separated (default: full,lazy,lazy-prefetch,lazy-hot)
+  --modes LIST        Comma-separated (default: full,lazy,lazy-prefetch,lazy-adaptive,lazy-hot)
   --iterations N      Runs per config (default: 5)
   --output-dir DIR    Results directory (default: eval/results)
+  --append            Append to existing results.csv (skip overwrite)
 ```
 
-Examples:
-```bash
-# Redis only, 3 iterations, lazy modes only
-sudo bash eval/bench.sh --workloads redis --modes lazy,lazy-prefetch --iterations 3
-
-# All workloads, full and lazy only
-sudo bash eval/bench.sh --modes full,lazy
-```
-
-### Generate report
+### Prerequisites
 
 ```bash
-make report
-cat eval/results/report.md
+sudo pacman -S redis            # or: apt install redis-server
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install matplotlib          # for make figures
+pip install criu                # pycriu, needed by bench.sh
 ```
 
-The report includes:
-- TTFR comparison table (workload x mode)
-- Throughput table with % of baseline
-- Page fault analysis
-- Hypothesis validation (H1: TTFR < 1s, H2: throughput > 70%)
-- Research question analysis
+## 6. Report and Figures
 
-## 6. Understanding the Output
-
-### Handler log
-
-During lazy restore, the handler prints:
-```
-Config: prefetch=off seq=16 stride=8 hot_pages=(none)
-Listening on /tmp/.../lazy-pages.socket
-Connected to page server at 127.0.0.1:9999
-CRIU restore connected
-Received PID: 12345
-Received userfaultfd: 3
-Handling page faults...
-Fault 1: 0x7f47541be000 (prefetched 0)
-Fault 2: 0x7ffeb2b79000 (prefetched 0)
-...
-Prefetch stats: 266 faults, 0 prefetched, 0 hits (0% hit rate)
-Total pages served: 266
+```bash
+make report     # CSV → eval/results/report.md
+make figures    # CSV + logs → eval/results/figures/fig1–fig5 (PDF + PNG)
+make docs       # both report and figures
 ```
 
-### CSV schema
+The report includes TTFR and throughput tables, page fault analysis, hypothesis
+validation, and research question analysis. The figures script produces publication-
+ready PDF and PNG files from the committed dataset.
 
-Benchmark results in `eval/results/results.csv`:
+## 7. Understanding Handler Logs
+
+Each iteration saves logs under `eval/results/logs/`:
+
 ```
-workload,mode,iteration,ttfr_ms,throughput_ops_sec,page_faults,
-pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,
-eager_pages,checkpoint_time_ms
+{workload}_{mode}_iter{N}_handler.log
+{workload}_{mode}_iter{N}_dump.log
+{workload}_{mode}_iter{N}_restore.log
+{workload}_{mode}_iter{N}_page_server.log
 ```
 
-## 7. Adding a New Workload
+Inspect adaptive controller decisions across runs:
 
-Create `eval/workloads/myworkload.sh` implementing these functions:
+```bash
+rg "Policy:|Prefetch stats" eval/results/logs/*_handler.log
+```
+
+Final stats line per run:
+```
+Prefetch stats: 15743 faults, 0 prefetched, 0 hits (0% hit rate)
+Total pages served: 15743
+```
+
+Note: hit rate is always 0% for async prefetch — this is expected. If prefetch installs
+a page before the fault fires, there is no fault to count as a hit. The adaptive
+controller uses duplicate pressure and queue depth instead (see paper/CLAIMS.md).
+
+## 8. Adding a New Workload
+
+Create `eval/workloads/myworkload.sh` implementing:
 
 ```bash
 workload_name()          # echo "myworkload"
-workload_setup()         # Check deps, return 0 if ready
-workload_start DIR       # Start process, set WORKLOAD_PID
-workload_warmup()        # Wait for steady state
-workload_profile DIR     # Run hot_pages.py, set HOT_PAGES_FILE
-workload_ttfr_probe DIR  # Wait for response, set TTFR_MS from RESTORE_T_START
-workload_throughput()    # Measure ops/sec, set THROUGHPUT
-workload_cleanup()       # Kill process, remove temp files
+workload_setup()         # check deps, return 0 if ready
+workload_start DIR       # start process, set WORKLOAD_PID
+workload_warmup()        # wait for steady state
+workload_profile DIR     # run hot_pages.py, set HOT_PAGES_FILE
+workload_ttfr_probe DIR  # probe until response, set TTFR_MS from RESTORE_T_START
+workload_throughput()    # measure ops/sec, set THROUGHPUT
+workload_cleanup()       # kill process, remove temp files
 ```
 
-Then run:
+Then:
 ```bash
 sudo bash eval/bench.sh --workloads myworkload --iterations 3
 ```
