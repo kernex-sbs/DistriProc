@@ -18,8 +18,9 @@ __pycache__/
 .idea/
 *.swp
 
-# Benchmark results
-eval/results/
+# Benchmark results — track final CSV and report, ignore per-iteration logs
+eval/results/logs/
+eval/results/*.log
 
 # Planning
 .planning/STATE.md.old

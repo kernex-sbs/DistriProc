@@ -113,7 +113,7 @@ def generate_report(rows, output_path):
     workloads = sorted(set(r["workload"] for r in rows))
     modes = []
     # Preserve logical order
-    for m in ["full", "lazy", "lazy-prefetch", "lazy-hot"]:
+    for m in ["full", "lazy", "lazy-prefetch", "lazy-adaptive", "lazy-hot"]:
         if any(r["mode"] == m for r in rows):
             modes.append(m)
 
@@ -282,9 +282,10 @@ def generate_report(rows, output_path):
         if full_key in groups and lazy_key in groups:
             full_m, _ = mean_std([r["ttfr_ms"] for r in groups[full_key]])
             lazy_m, _ = mean_std([r["ttfr_ms"] for r in groups[lazy_key]])
-            if full_m > 0:
-                speedup = full_m / lazy_m if lazy_m > 0 else 0
-                add(f"- **{wl}**: Full={full_m:.0f}ms, Lazy={lazy_m:.0f}ms → {speedup:.1f}x speedup")
+            if full_m > 0 and lazy_m > 0:
+                overhead = lazy_m / full_m
+                direction = f"{overhead:.1f}x slower" if overhead > 1 else f"{1/overhead:.1f}x faster"
+                add(f"- **{wl}**: Full={full_m:.0f}ms, Lazy={lazy_m:.0f}ms → lazy is {direction}")
             else:
                 add(f"- **{wl}**: Full={full_m:.0f}ms, Lazy={lazy_m:.0f}ms")
     add()
@@ -317,6 +318,24 @@ def generate_report(rows, output_path):
             add(f"- **{wl}**: TTFR {pre_ttfr:.0f}ms → {hot_ttfr:.0f}ms ({improvement:+.0f}%), {eager_m:.0f} eager pages")
     add()
 
+    # RQ5: Adaptive vs fixed prefetch
+    add("### RQ5: Does adaptive backoff avoid prefetch waste while preserving TTFR?")
+    add()
+    for wl in workloads:
+        pre_key = (wl, "lazy-prefetch")
+        ada_key = (wl, "lazy-adaptive")
+        if pre_key not in groups or ada_key not in groups:
+            continue
+        pre_ttfr, _ = mean_std([r["ttfr_ms"] for r in groups[pre_key]])
+        ada_ttfr, _ = mean_std([r["ttfr_ms"] for r in groups[ada_key]])
+        pre_dup, _ = mean_std([r["pages_prefetched"] for r in groups[pre_key]])
+        ada_dup, _ = mean_std([r["pages_prefetched"] for r in groups[ada_key]])
+        ttfr_delta = ada_ttfr - pre_ttfr
+        prefetch_change = ((ada_dup - pre_dup) / pre_dup * 100) if pre_dup > 0 else 0
+        add(f"- **{wl}**: TTFR {pre_ttfr:.0f}ms → {ada_ttfr:.0f}ms ({ttfr_delta:+.0f}ms), "
+            f"prefetched pages {pre_dup:.0f} → {ada_dup:.0f} ({prefetch_change:+.0f}% volume)")
+    add()
+
     # RQ4: Throughput cost of lazy restore
     add("### RQ4: What is the throughput cost of lazy restore?")
     add()
@@ -324,7 +343,7 @@ def generate_report(rows, output_path):
         base = baseline_tp.get(wl, 0)
         if base <= 0:
             continue
-        for mode in ["lazy", "lazy-prefetch", "lazy-hot"]:
+        for mode in ["lazy", "lazy-prefetch", "lazy-adaptive", "lazy-hot"]:
             key = (wl, mode)
             if key not in groups:
                 continue

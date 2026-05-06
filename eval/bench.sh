@@ -26,6 +26,7 @@ MODES="full,lazy,lazy-prefetch,lazy-adaptive,lazy-hot"
 ITERATIONS=5
 OUTPUT_DIR="$ROOT_DIR/eval/results"
 LOG_DIR=""
+APPEND=false
 
 # ── Parse arguments ─────────────────────────────────────────────────────────
 
@@ -35,12 +36,14 @@ while [ $# -gt 0 ]; do
         --modes)      MODES="$2"; shift 2 ;;
         --iterations) ITERATIONS="$2"; shift 2 ;;
         --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+        --append)     APPEND=true; shift ;;
         --help|-h)
             echo "Usage: sudo bash $0 [OPTIONS]"
             echo "  --workloads LIST    Comma-separated (default: test_loop,redis,pytorch)"
             echo "  --modes LIST        Comma-separated (default: full,lazy,lazy-prefetch,lazy-adaptive,lazy-hot)"
             echo "  --iterations N      Runs per config (default: 5)"
             echo "  --output-dir DIR    Results directory (default: eval/results)"
+            echo "  --append            Append to existing results.csv instead of overwriting"
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -81,7 +84,11 @@ LOG_DIR="$OUTPUT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
 CSV_FILE="$OUTPUT_DIR/results.csv"
-csv_header "$CSV_FILE"
+if [ "$APPEND" = "true" ] && [ -f "$CSV_FILE" ]; then
+    log_info "Appending to existing $CSV_FILE"
+else
+    csv_header "$CSV_FILE"
+fi
 
 IFS=',' read -ra WORKLOAD_LIST <<< "$WORKLOADS"
 IFS=',' read -ra MODE_LIST <<< "$MODES"

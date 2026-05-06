@@ -7,7 +7,7 @@ BINDIR = src
 
 TARGETS = $(BINDIR)/test_uffd $(BINDIR)/test_uffd_tcp $(BINDIR)/test_loop $(BINDIR)/lazy_handler
 
-.PHONY: all test clean bench bench-quick report docs
+.PHONY: all test clean bench bench-quick bench-paper report docs
 
 all: $(TARGETS)
 
@@ -31,6 +31,15 @@ bench: all
 
 bench-quick: all
 	sudo bash eval/bench.sh --workloads test_loop --iterations 2 --output-dir eval/results
+
+# Final paper dataset: all workloads × lazy,lazy-prefetch,lazy-adaptive in one run.
+# Use --append to add workloads incrementally without clobbering results.csv.
+bench-paper: all
+	sudo bash eval/bench.sh \
+		--workloads test_loop,redis,pytorch \
+		--modes full,lazy,lazy-prefetch,lazy-adaptive \
+		--iterations 5 \
+		--output-dir eval/results
 
 report:
 	python3 eval/report.py --input eval/results/results.csv --output eval/results/report.md
