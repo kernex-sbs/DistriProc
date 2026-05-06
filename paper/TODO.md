@@ -82,11 +82,17 @@ Draft: `paper/draft.md`
 
 ## 9. Final Paper Sanity Check
 
-- [ ] Every claim maps to a result
-- [ ] Every result maps to a reproducible command
-- [ ] No stale claims remain from the earlier broader proposal
-- [ ] Novelty statement is precise and defensible
-- [ ] The abstract matches the actual artifact
+- [x] Every claim maps to a result — C1/C2/C3 verified against results.csv
+- [x] Every result maps to a reproducible command — `make bench-paper && make report`
+- [x] No stale claims remain — RDMA/DSM/coherence only in out-of-scope/limitations
+- [x] Novelty statement is precise and defensible — "adaptive controller using dup pressure + queue depth"
+- [x] The abstract matches the actual artifact — 5 errors found and corrected:
+      - "recovers 41%" → "reduces fixed-prefetch TTFR by 41%"
+      - "more than double" → "nearly double" (1.85×, not 2×)
+      - "doubles TTFR" → "increases TTFR by 85%"
+      - "45–58% on all workloads" → "20–58% across all workloads" (pytorch=20%)
+      - "~800 lines C, ~100 lines Python" → "~1200 lines C, ~300 lines Python"
+      - §4/§6 cross-references corrected to §5
 
 ## 10. Submission Readiness
 

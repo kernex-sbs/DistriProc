@@ -10,15 +10,15 @@ server. This reduces time-to-first-request (TTFR) dramatically for workloads wit
 small active footprints at restore time, but leaves the policy question open: should
 the runtime prefetch additional pages speculatively, and if so, how many?
 
-We show that a fixed sequential prefetch policy can double or nearly double TTFR for
+We show that a fixed sequential prefetch policy can nearly double TTFR for
 memory-heavy workloads by congesting the TCP channel shared between fault resolution
 and speculative prefetch. We present DistriProc, an adaptive userspace runtime that
 monitors duplicate-fetch pressure and async queue depth within a sliding window of
 page faults, and disables prefetch when those signals indicate it is causing harm.
 Evaluated on three workloads (a synthetic loop, Redis with a 10,000-key dataset, and
-PyTorch inference), the adaptive policy recovers 41% of the TTFR lost to fixed
-prefetch on the memory-heavy workload while reducing prefetch volume by 20–58% across
-all workloads, without regressing the others.
+PyTorch inference), the adaptive policy reduces fixed-prefetch TTFR by 41%
+(1,159 → 686 ms) on the memory-heavy workload while reducing prefetch volume by
+20–58% across all workloads, without regressing the others.
 
 ---
 
@@ -43,28 +43,28 @@ behaviors based on observed conditions.
 Prior deployments of CRIU lazy restore [Runc-lazy, CRIU-lazy] have not systematically
 studied the policy question. In particular, the assumption that prefetch is always
 beneficial turns out to be incorrect. We demonstrate empirically that a fixed
-sequential prefetch policy can more than double TTFR for workloads with large working
+sequential prefetch policy can nearly double TTFR for workloads with large working
 sets, because speculative traffic competes with fault-path traffic over the same TCP
 connection, building up an async queue backlog that delays synchronous fault resolution.
 
 We make three contributions:
 
 1. We demonstrate that lazy restore provides a 21× TTFR reduction for memory-light
-   workloads (§4), but that this benefit inverts for memory-heavy workloads where the
+   workloads, but that this benefit inverts for memory-heavy workloads where the
    process must page in its full working set before serving (§5).
 
-2. We show that fixed sequential prefetch doubles TTFR for a PyTorch inference server
-   (625 ms → 1,159 ms) by reducing page faults 60% while simultaneously congesting the
-   fault path — establishing that fault reduction is not a reliable proxy for latency
-   improvement (§5).
+2. We show that fixed sequential prefetch increases TTFR by 85% for a PyTorch inference
+   server (625 ms → 1,159 ms) by reducing page faults 60% while simultaneously
+   congesting the fault path — establishing that fault reduction is not a reliable proxy
+   for latency improvement (§5).
 
 3. We present an adaptive controller that uses duplicate-fetch pressure and async queue
    depth as lightweight signals within a 128-fault sliding window, and show that it
    recovers 473 ms of the TTFR degradation caused by fixed prefetch on the
-   memory-heavy workload while cutting prefetch volume 45–58% on all workloads (§6).
+   memory-heavy workload while cutting prefetch volume 20–58% across all workloads (§5).
 
-DistriProc is implemented as a userspace daemon in approximately 800 lines of C and
-100 lines of Python. All experiments use a TCP loopback page server; RDMA, writable
+DistriProc is implemented as a userspace daemon in approximately 1,200 lines of C and
+300 lines of Python. All experiments use a TCP loopback page server; RDMA, writable
 remote-memory coherence, and multi-node distribution are out of scope for this paper.
 
 ---
