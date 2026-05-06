@@ -65,18 +65,20 @@ This checklist tracks the path from the current research prototype to a draftabl
 
 ## 8. Write The Paper
 
-- [ ] Title
-- [ ] Abstract
-- [ ] Introduction
-- [ ] Motivation
-- [ ] Background on CRIU lazy restore and `userfaultfd`
-- [ ] Design
-- [ ] Implementation
-- [ ] Evaluation
-- [ ] Discussion
-- [ ] Related work
-- [ ] Limitations
-- [ ] Conclusion
+- [x] Title
+- [x] Abstract
+- [x] Introduction
+- [x] Motivation (folded into §1 Introduction and §5 Evaluation)
+- [x] Background on CRIU lazy restore and `userfaultfd`
+- [x] Design
+- [x] Implementation
+- [x] Evaluation
+- [x] Discussion
+- [x] Related work
+- [x] Limitations
+- [x] Conclusion
+
+Draft: `paper/draft.md`
 
 ## 9. Final Paper Sanity Check
 
