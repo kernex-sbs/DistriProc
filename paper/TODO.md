@@ -30,18 +30,12 @@ This checklist tracks the path from the current research prototype to a draftabl
 
 ## 4. Lock The Claims
 
-- [ ] State exactly what the current system does
-- [ ] State exactly what it does not do
-- [ ] Keep writable remote-memory coherence out of scope
-- [ ] Keep RDMA and DSM claims out of scope
-- [ ] Frame the contribution as an adaptive post-restore remote-memory runtime
-- [ ] Decide the 2-3 headline claims the paper will defend
-
-Candidate headline claims (from actual data):
-1. Lazy restore cuts TTFR 21x for memory-light workloads (test_loop: 1020ms → 48ms)
-2. Fixed prefetch can double TTFR on memory-heavy workloads (pytorch: 625ms → 1159ms)
-3. Adaptive controller recovers near-lazy performance while cutting prefetch volume 45-58%
-   (pytorch: 1159ms → 686ms; redis: -45% prefetch; test_loop: -58% prefetch, +1ms TTFR)
+- [x] State exactly what the current system does — `paper/CLAIMS.md`
+- [x] State exactly what it does not do — `paper/CLAIMS.md`
+- [x] Keep writable remote-memory coherence out of scope — `paper/CLAIMS.md`
+- [x] Keep RDMA and DSM claims out of scope — `paper/CLAIMS.md`
+- [x] Frame the contribution as an adaptive post-restore remote-memory runtime — `paper/CLAIMS.md`
+- [x] Decide the 2-3 headline claims the paper will defend — C1/C2/C3 in `paper/CLAIMS.md`
 
 ## 5. Prepare Figures And Tables
 
