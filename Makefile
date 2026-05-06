@@ -7,7 +7,7 @@ BINDIR = src
 
 TARGETS = $(BINDIR)/test_uffd $(BINDIR)/test_uffd_tcp $(BINDIR)/test_loop $(BINDIR)/lazy_handler
 
-.PHONY: all test clean bench bench-quick bench-paper report docs
+.PHONY: all test clean bench bench-quick bench-paper report docs pdf
 
 all: $(TARGETS)
 
@@ -48,6 +48,14 @@ figures:
 	python3 eval/figures.py --csv eval/results/results.csv --logs eval/results/logs --out eval/results/figures
 
 docs: report figures
+
+paper/paper.pdf: paper/paper.tex paper/references.bib
+	cd paper && pdflatex -interaction=nonstopmode paper.tex && \
+	bibtex paper && \
+	pdflatex -interaction=nonstopmode paper.tex && \
+	pdflatex -interaction=nonstopmode paper.tex
+
+pdf: paper/paper.pdf
 	@echo "Reports: eval/results/report.md"
 	@echo "Evaluation: docs/evaluation.md"
 
