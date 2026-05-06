@@ -52,6 +52,7 @@
 #define MAX_PREFETCH_TARGETS 64
 #define EAGER_BATCH_SIZE 32
 #define PREFETCH_QUEUE_SIZE 8192
+#define ADAPT_WINDOW_FAULTS 128
 
 /* ── Global state ─────────────────────────────────────── */
 
@@ -506,14 +507,13 @@ static void async_prefetch_snapshot(struct async_prefetch_ctx *ctx,
 static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
 					 struct adaptive_window *window)
 {
-	const uint64_t min_faults = 128;
 	uint64_t duplicate_rate = 0;
 	int old_enabled;
 	int old_seq;
 	int old_stride;
 	int changed = 0;
 
-	if (!pcfg->adaptive || window->faults < min_faults)
+	if (!pcfg->adaptive || window->faults < ADAPT_WINDOW_FAULTS)
 		return;
 
 	if (window->prefetched + window->duplicates > 0) {
@@ -526,6 +526,11 @@ static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
 	old_stride = pcfg->stride_count;
 
 	if (!pcfg->enabled) {
+		if (window->queue_depth > (PREFETCH_QUEUE_SIZE / 8)) {
+			/* Stay off while the async worker drains backlog. */
+			memset(window, 0, sizeof(*window));
+			return;
+		}
 		if (pcfg->cooldown_windows > 0)
 			pcfg->cooldown_windows--;
 		if (pcfg->cooldown_windows == 0) {
@@ -964,7 +969,7 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 				       nprefetch);
 			}
 
-			if (pcfg->adaptive && window.faults >= 64) {
+			if (pcfg->adaptive && window.faults >= ADAPT_WINDOW_FAULTS) {
 				uint64_t total_prefetched;
 				uint64_t total_dropped;
 				uint64_t total_duplicates;
