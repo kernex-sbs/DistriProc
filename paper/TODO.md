@@ -8,25 +8,25 @@ This checklist tracks the path from the current research prototype to a draftabl
 - [x] Adaptive mode implemented
 - [x] Redis workload uses a real working set
 - [x] Per-iteration handler logs are preserved
-- [ ] Decide whether the current adaptive policy is the paper baseline
-- [ ] Avoid further core behavior changes unless results justify them
+- [x] Decide whether the current adaptive policy is the paper baseline — YES, current controller is the baseline
+- [x] Avoid further core behavior changes unless results justify them
 
 ## 2. Stabilize The Evaluation Pipeline
 
-- [ ] Stop overwriting `eval/results/results.csv` across separate runs
-- [ ] Support one combined dataset covering `test_loop`, `redis`, and `pytorch`
-- [ ] Ensure `lazy`, `lazy-prefetch`, and `lazy-adaptive` all appear in the final report
-- [ ] Preserve per-iteration logs under `eval/results/logs/`
-- [ ] Verify `make report` reflects the combined dataset, not only the most recent run
+- [x] Stop overwriting `eval/results/results.csv` across separate runs (`--append` flag)
+- [x] Support one combined dataset covering `test_loop`, `redis`, and `pytorch`
+- [x] Ensure `lazy`, `lazy-prefetch`, and `lazy-adaptive` all appear in the final report
+- [x] Preserve per-iteration logs under `eval/results/logs/`
+- [x] Verify `make report` reflects the combined dataset, not only the most recent run
 
 ## 3. Produce The Final Experimental Dataset
 
-- [ ] Run `test_loop` with `lazy`, `lazy-prefetch`, `lazy-adaptive`
-- [ ] Run `redis` with `lazy`, `lazy-prefetch`, `lazy-adaptive`
-- [ ] Run `pytorch` with `lazy`, `lazy-prefetch`, `lazy-adaptive`
-- [ ] Use stable iteration counts
-- [ ] Save raw CSV and logs for all runs
-- [ ] Regenerate the report from the combined dataset
+- [x] Run `test_loop` with `full`, `lazy`, `lazy-prefetch`, `lazy-adaptive` (5 iterations)
+- [x] Run `redis` with `full`, `lazy`, `lazy-prefetch`, `lazy-adaptive` (5 iterations)
+- [x] Run `pytorch` with `full`, `lazy`, `lazy-prefetch`, `lazy-adaptive` (5 iterations)
+- [x] Use stable iteration counts (5 per config)
+- [x] Save raw CSV and logs for all runs (`eval/results/results.csv`, `eval/results/logs/`)
+- [x] Regenerate the report from the combined dataset (`eval/results/report.md`)
 
 ## 4. Lock The Claims
 
@@ -37,22 +37,29 @@ This checklist tracks the path from the current research prototype to a draftabl
 - [ ] Frame the contribution as an adaptive post-restore remote-memory runtime
 - [ ] Decide the 2-3 headline claims the paper will defend
 
+Candidate headline claims (from actual data):
+1. Lazy restore cuts TTFR 21x for memory-light workloads (test_loop: 1020ms → 48ms)
+2. Fixed prefetch can double TTFR on memory-heavy workloads (pytorch: 625ms → 1159ms)
+3. Adaptive controller recovers near-lazy performance while cutting prefetch volume 45-58%
+   (pytorch: 1159ms → 686ms; redis: -45% prefetch; test_loop: -58% prefetch, +1ms TTFR)
+
 ## 5. Prepare Figures And Tables
 
-- [ ] TTFR table for all workloads and modes
-- [ ] Throughput table for all workloads and modes
-- [ ] Page-fault / prefetched-pages / duplicate-pressure table
-- [ ] Figure showing why fixed prefetch fails
-- [ ] Figure showing adaptive backoff decisions from handler logs
+- [ ] TTFR table for all workloads and modes — data in `eval/results/report.md`
+- [ ] Throughput table for all workloads and modes — data in `eval/results/report.md`
+- [ ] Page-fault / prefetched-pages table — data in `eval/results/report.md`
+- [ ] Figure showing why fixed prefetch fails (pytorch TTFR bar chart: 209/625/1159/686)
+- [ ] Figure showing adaptive backoff decisions from handler logs (`eval/results/logs/`)
 - [ ] Summary comparison: `lazy` vs `lazy-prefetch` vs `lazy-adaptive`
 
 ## 6. Tighten Methodology
 
-- [ ] Document hardware and software exactly
-- [ ] Document benchmark procedure exactly
-- [ ] Explain TTFR per workload
-- [ ] Explain remaining PyTorch throughput limitations if still present
-- [ ] Explain why the Redis workload is now meaningful
+- [ ] Document hardware and software exactly (CPU: AMD Ryzen 7 7735HS, 15GB RAM, kernel 6.18.7, CRIU 4.2)
+- [ ] Document benchmark procedure exactly (`make bench-paper` → `make report`)
+- [ ] Explain TTFR per workload (why pytorch lazy > full; why test_loop lazy << full)
+- [ ] Explain hit rate = 0% for all modes (async prefetch wins race; metric unreliable; paper must not cite it)
+- [ ] Explain Redis throughput shortfall: all lazy modes ~68% of full — TCP loopback overhead, not a claim failure
+- [ ] Explain why the Redis workload is now meaningful (10k keys, 13.77MB working set)
 - [ ] Write threats to validity
 
 ## 7. Update Repo Docs
@@ -87,8 +94,8 @@ This checklist tracks the path from the current research prototype to a draftabl
 
 ## 10. Submission Readiness
 
-- [ ] Final combined results checked into a stable location
-- [ ] Final report generated
+- [ ] Final combined results checked into a stable location ✓ (`eval/results/results.csv` committed)
+- [ ] Final report generated ✓ (`eval/results/report.md` committed)
 - [ ] Paper draft complete
 - [ ] Technical accuracy review done
 - [ ] Overclaiming review done
@@ -96,4 +103,5 @@ This checklist tracks the path from the current research prototype to a draftabl
 
 ## Immediate Next Step
 
-- [ ] Fix result accumulation and combined report generation so one final report covers all workloads and modes
+Start section 4 (Lock The Claims) then section 8 (Write The Paper).
+Recommended order: claims → methodology notes → figures → paper draft → docs.
