@@ -18,7 +18,7 @@ __pycache__/
 .idea/
 *.swp
 
-# Benchmark results — track final CSV and report, ignore per-iteration logs
+# Benchmark results — track final CSV, report, and figures; ignore per-iteration logs
 eval/results/logs/
 eval/results/*.log
 

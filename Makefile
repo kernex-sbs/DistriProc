@@ -44,7 +44,10 @@ bench-paper: all
 report:
 	python3 eval/report.py --input eval/results/results.csv --output eval/results/report.md
 
-docs: report
+figures:
+	python3 eval/figures.py --csv eval/results/results.csv --logs eval/results/logs --out eval/results/figures
+
+docs: report figures
 	@echo "Reports: eval/results/report.md"
 	@echo "Evaluation: docs/evaluation.md"
 
