@@ -110,20 +110,25 @@ remote page server. Lazy restore dramatically reduces time-to-first-request
 (TTFR) for workloads with small active footprints, but leaves the prefetch
 policy unspecified: should the runtime fetch additional pages speculatively,
 and how many?
-We show empirically that a fixed sequential prefetch policy can nearly double
-TTFR for memory-heavy workloads by congesting the TCP channel shared between
-fault resolution and speculative prefetch. We present \distriproc, a userspace
-runtime that monitors duplicate-fetch pressure and async queue depth within a
-sliding window of page faults and disables prefetch when those signals
-indicate it is causing harm. On three workloads---a synthetic loop, Redis
-with a 10{,}000-key dataset, and PyTorch ResNet-18 inference---the adaptive
-policy reduces fixed-prefetch TTFR by $41\,\%$
-($1{,}159\!\to\!686$\,ms, Welch $t\!=\!14.8$, $p\!<\!10^{-4}$) on the
-memory-heavy workload while cutting prefetch volume by $20$--$58\,\%$
-across all workloads. Adaptive TTFR is statistically indistinguishable from
-demand-only lazy ($p\!=\!0.11$), confirming that the controller recovers the
-losses caused by fixed prefetch without sacrificing the benefits of lazy
-restore.
+This paper presents an empirical characterization of how fixed sequential
+prefetch interacts with CRIU lazy restore in the post-restore remote-memory
+phase. We show that a policy widely assumed to be beneficial in fact
+\emph{increases} TTFR by up to $85\,\%$ for memory-heavy workloads, because
+speculative traffic congests the TCP channel shared with fault resolution;
+critically, fault count drops $60\,\%$ even as latency worsens, so fault
+reduction is not a reliable proxy for TTFR. As a practical mitigation we
+introduce \distriproc, a userspace runtime whose feedback-driven controller
+monitors duplicate-fetch pressure and async queue depth within a sliding
+window of page faults and disables prefetch when those signals indicate
+congestion. On three workloads---a synthetic loop, Redis with a
+10{,}000-key dataset, and PyTorch ResNet-18 inference---the controller
+recovers most of the regression introduced by fixed prefetch ($1{,}159 \to
+686$\,ms; $-41\,\%$, Welch $t = 14.8$, $p < 10^{-4}$) and cuts prefetch
+volume by $20$--$58\,\%$ across all workloads. The remaining $61$\,ms gap
+to demand-only lazy is not statistically significant at $n=5$ ($p=0.11$).
+We frame the contribution as a measurement study of prefetch behavior in
+post-restore remote memory, with the controller as one workable mitigation
+rather than a claim of algorithmic novelty.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -155,43 +160,64 @@ traffic~\cite{chen1995effective}. An \emph{adaptive policy} monitors runtime
 signals and switches between these behaviors based on observed conditions.
 
 Prior deployments of CRIU lazy restore~\cite{criu-lazy, runc-lazy} have not
-systematically studied the policy question. The assumption that prefetch is
-always beneficial turns out to be incorrect. We demonstrate empirically that
-a fixed sequential prefetch policy can nearly double TTFR for workloads with
-large working sets, because speculative traffic competes with fault-path
-traffic over the same TCP connection, building up an async queue backlog
-that delays synchronous fault resolution. Statistically, the regression is
-unambiguous (Welch $t\!=\!-39.6$, $p\!<\!10^{-9}$, $n\!=\!5$).
+systematically studied the policy question; the literature has tended to
+treat sequential prefetch as a uniformly beneficial default. The central
+empirical finding of this paper is that this assumption is wrong in a
+specific and measurable way: under post-restore conditions, speculative
+prefetch competes with fault-path traffic over the same TCP connection,
+builds an async queue backlog, and delays synchronous fault resolution,
+nearly doubling TTFR on workloads with large working sets (Welch
+$t = -39.6$, $p < 10^{-9}$, $n = 5$). Strikingly, this regression coincides
+with a $60\,\%$ \emph{reduction} in page faults, so the conventional proxy
+metric points the opposite direction of the observed latency.
+
+\smallskip
+\noindent\textbf{Framing.}\, We position this work as a
+\emph{measurement-driven systems study} of prefetch behavior in CRIU lazy
+restore, supplemented by a practical mitigation. The controller we
+present is a heuristic feedback loop in the tradition of TCP congestion
+control and adaptive paging; we do not claim algorithmic novelty for it.
+The novelty lies in (a)~the empirical characterization of the
+fixed-prefetch TTFR paradox, which to our knowledge has not been reported
+for CRIU lazy restore, and (b)~the demonstration that the paradox is
+mitigable in userspace using only locally observable signals, without
+kernel changes or RDMA.
 
 \smallskip
 \noindent\textbf{Contributions.}\, This paper makes four contributions:
 
 \begin{itemize}
-\item We demonstrate that lazy restore provides a $21\times$ TTFR reduction
-for memory-light workloads, but that this benefit inverts for memory-heavy
-workloads where the process must page in its full working set before serving
+\item \emph{Empirical paradox.} We show that fixed sequential prefetch
+increases PyTorch TTFR by $85\,\%$ ($625 \to 1{,}159$\,ms) while
+reducing page faults by $60\,\%$---establishing that fault reduction is
+not a reliable proxy for latency improvement under post-restore remote
+memory (\S\ref{sec:paradox}).
+
+\item \emph{TTFR regime characterization.} We show that lazy restore
+delivers a $21\times$ TTFR reduction for memory-light workloads but that
+this benefit inverts for memory-heavy workloads, where the process must
+page in its full working set before serving its first request
 (\S\ref{sec:eval}).
 
-\item We show that fixed sequential prefetch increases PyTorch TTFR by
-$85\,\%$ ($625\!\to\!1{,}159$\,ms) by reducing page faults $60\,\%$ while
-simultaneously congesting the fault path---establishing that fault reduction
-is not a reliable proxy for latency improvement (\S\ref{sec:paradox}).
+\item \emph{Mitigation in userspace.} We design a feedback controller
+that uses duplicate-fetch pressure and async queue depth as lightweight
+signals within a 128-fault sliding window. The controller recovers
+$473$\,ms of the regression introduced by fixed prefetch
+($p < 10^{-4}$) and cuts prefetch volume $20$--$58\,\%$ across all
+workloads (\S\ref{sec:controller-eval}). It is a workable mitigation,
+not a claim of algorithmic novelty.
 
-\item We present an adaptive controller that uses duplicate-fetch pressure
-and async queue depth as lightweight signals within a 128-fault sliding
-window, recovering $473$\,ms of the TTFR degradation caused by fixed
-prefetch ($p\!<\!10^{-4}$) and cutting prefetch volume $20$--$58\,\%$
-across all workloads (\S\ref{sec:controller-eval}).
-
-\item We release \distriproc as an open-source artifact with deterministic
-benchmark scripts, enabling single-command reproduction of every result in
-this paper (\S\ref{sec:repro}).
+\item \emph{Reproducible artifact.} We release \distriproc as an
+open-source userspace daemon (${\sim}1{,}200$ lines of C and
+${\sim}300$ lines of Python) with deterministic benchmark scripts that
+reproduce every result in this paper from a single command
+(\S\ref{sec:repro}).
 \end{itemize}
 
-\distriproc is implemented as a userspace daemon in approximately $1{,}200$
-lines of C and $300$ lines of Python. All experiments use a TCP loopback page
-server; RDMA, writable remote-memory coherence, and multi-node distribution
-are out of scope for this paper.
+All experiments use a TCP loopback page server. RDMA, writable
+remote-memory coherence, and multi-node distribution are out of scope; the
+loopback setting deliberately isolates prefetch policy from cross-host
+network variance, and we discuss its implications in \S\ref{sec:limits}.
 
 % ── 2. Background ────────────────────────────────────────────────────────────
 \section{Background and Motivation}
