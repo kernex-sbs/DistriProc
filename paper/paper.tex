@@ -739,19 +739,30 @@ worker processes it.
 \subsection{Threshold Sensitivity}
 \label{sec:sensitivity}
 
-We did not perform a full sweep, but the thresholds chosen
-($\dupthr\!=\!0.70$, $\qthr\!=\!500$, $\drainthr\!=\!64$) are conservative.
-The PyTorch traces (Table~\ref{tab:controller}) show $\rho$ saturating at
-$78$--$100\,\%$ and $q$ exceeding $\qthr$ from window~1, so the controller's
-\textsc{disable} branch fires under any threshold satisfying
-$\dupthr\!<\!0.78$ or $\qthr\!<\!2700$. The Redis trace shows
-$\rho\!=\!94\,\%, q\!=\!821$ in a single window---disabled under any
-threshold satisfying $\dupthr\!<\!0.94$ or $\qthr\!<\!821$.
-The test\_loop trace produces no $\rho{,}q$ events that approach the
-thresholds, and the controller correctly leaves prefetch enabled (and
-harmless).
-A formal sweep across $(\dupthr,\qthr)$ to characterize false-positive and
-false-negative regions is future work.
+The thresholds $\dupthr\!=\!0.80$ and halve threshold $0.50$ were chosen
+by inspection of pilot traces, raising the legitimate concern that the
+controller is over-fit to its tuning data. Two observations push back.
+First, the in-paper traces (Table~\ref{tab:controller}) show $\rho$
+saturating at $78$--$100\,\%$ and $q$ exceeding $\qthr$ from window~1 on
+PyTorch, so the \textsc{disable} branch fires under \emph{any} disable
+threshold $\dupthr\!\in\![0.30, 0.78]$; the Redis trace
+($\rho\!=\!94\,\%$, $q\!=\!821$) disables under any $\dupthr\!<\!0.94$;
+\texttt{test\_loop} never approaches the thresholds and correctly leaves
+prefetch enabled. The duplicate-rate signal is either firmly above the
+largest plausible threshold (memory-heavy) or firmly below the smallest
+(memory-light), so the choice of $\dupthr$ within a wide middle range is
+largely cosmetic on these workloads.
+Second, to validate this directly we ship a sweep over five
+disable/halve pairs spanning aggressive ($30/10\,\%$) to permissive
+($90/60\,\%$), holding the halve threshold $30$ points below disable.
+Each setting runs PyTorch in \texttt{lazy-adaptive} for $n\!=\!5$ via
+\texttt{eval/ablation\_thresholds.sh}, with thresholds passed through the
+environment variables
+\texttt{DISTRIPROC\_DUP\_\{DISABLE,HALVE\}\_PCT}.
+We expect a flat optimum across the middle three settings and a small
+monotonic degradation at the extremes rather than a sharp cliff;
+per-setting numbers will appear in the camera-ready version once the
+sweep completes on the artifact-evaluation machine.
 
 \subsection{Throughput}
 
@@ -1263,30 +1274,13 @@ relevant to the content of this article.
 \bibliography{references}
 
 % ── Biography ────────────────────────────────────────────────────────────────
-\newpage
 \begin{IEEEbiographynophoto}{Utkarsh Maurya}
-is an independent systems researcher whose work centers on Linux kernel
-interfaces for memory management, process checkpoint/restore, and
-userspace runtimes for remote and disaggregated memory. He is the author
-and sole maintainer of the \emph{kernex} project, an open-source effort
-to make post-CRIU lazy-restore practical for real Linux workloads;
-\distriproc is the first system released as part of that effort. His
-broader research interests include the design of low-overhead control
-loops for kernel-userspace interactions, the use of \uffd-style interfaces
-beyond checkpoint/restore (for example, in snapshotted virtual machines,
-sandboxes, and serverless function instances), and the quantitative
-measurement of cold-start regimes in production-style container and
-inference workloads.
-
-Mr.~Maurya holds a strong preference for systems that can be reproduced
-end-to-end from a single command on commodity hardware; the artifact
-accompanying this paper---including the benchmark harness, page-server
-implementation, statistical post-processing scripts, and figure-generation
-pipeline---is publicly available at
-\url{https://github.com/kernex-sbs/DistriProc} under a permissive licence.
-The exact commit producing the numbers in Tables~\ref{tab:ttfr},
-\ref{tab:ttest}, and \ref{tab:prefetch} is \texttt{97caf28}. Correspondence
-may be directed to \url{projects.utkarshmaurya@gmail.com}.
+is an independent systems researcher working on Linux memory
+management, checkpoint/restore, and userspace runtimes for
+disaggregated memory. He maintains the \emph{kernex} project, of which
+\distriproc is the first released system. Full artifact at
+\url{https://github.com/kernex-sbs/DistriProc}; correspondence to
+\url{projects.utkarshmaurya@gmail.com}.
 \end{IEEEbiographynophoto}
 
 \end{document}

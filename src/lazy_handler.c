@@ -68,6 +68,8 @@ struct prefetch_config {
 	int max_seq_count;   /* upper bound for adaptive growth */
 	int max_stride_count; /* upper bound for adaptive growth */
 	int cooldown_windows; /* windows to keep prefetch off before retry */
+	int dup_disable_pct;  /* duplicate-rate %% at/above which prefetch is disabled */
+	int dup_halve_pct;    /* duplicate-rate %% at/above which prefetch is halved */
 };
 
 struct prefetch_stats {
@@ -542,7 +544,7 @@ static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
 	} else if (window->dropped > 0 ||
 		   window->queue_depth > (PREFETCH_QUEUE_SIZE / 2) ||
 		   (window->prefetched > 0 &&
-		    duplicate_rate >= 80)) {
+		    duplicate_rate >= (uint64_t)pcfg->dup_disable_pct)) {
 		pcfg->seq_count = 0;
 		pcfg->stride_count = 0;
 		pcfg->enabled = 0;
@@ -550,7 +552,8 @@ static void maybe_adjust_prefetch_policy(struct prefetch_config *pcfg,
 		changed = 1;
 	} else if (window->dropped > 0 ||
 		   window->queue_depth > (PREFETCH_QUEUE_SIZE / 4) ||
-		   (window->prefetched > 0 && duplicate_rate >= 50)) {
+		   (window->prefetched > 0 &&
+		    duplicate_rate >= (uint64_t)pcfg->dup_halve_pct)) {
 		pcfg->seq_count /= 2;
 		pcfg->stride_count /= 2;
 		if (pcfg->seq_count < 1)
@@ -1082,7 +1085,22 @@ int main(int argc, char *argv[])
 		.max_seq_count = 32,
 		.max_stride_count = 16,
 		.cooldown_windows = 0,
+		.dup_disable_pct = 80,
+		.dup_halve_pct = 50,
 	};
+
+	const char *env_disable = getenv("DISTRIPROC_DUP_DISABLE_PCT");
+	const char *env_halve = getenv("DISTRIPROC_DUP_HALVE_PCT");
+	if (env_disable) {
+		int v = atoi(env_disable);
+		if (v >= 1 && v <= 100)
+			pcfg.dup_disable_pct = v;
+	}
+	if (env_halve) {
+		int v = atoi(env_halve);
+		if (v >= 1 && v <= 100)
+			pcfg.dup_halve_pct = v;
+	}
 
 	static struct option long_opts[] = {
 		{"images-dir",      required_argument, 0, 'd'},
@@ -1142,10 +1160,11 @@ int main(int argc, char *argv[])
 	signal(SIGINT, signal_handler);
 	signal(SIGPIPE, SIG_IGN);
 
-	printf("Config: prefetch=%s adaptive=%s seq=%d stride=%d hot_pages=%s\n",
+	printf("Config: prefetch=%s adaptive=%s seq=%d stride=%d dup_disable=%d%% dup_halve=%d%% hot_pages=%s\n",
 	       pcfg.enabled ? "on" : "off",
 	       pcfg.adaptive ? "on" : "off",
 	       pcfg.seq_count, pcfg.stride_count,
+	       pcfg.dup_disable_pct, pcfg.dup_halve_pct,
 	       hot_pages_file ? hot_pages_file : "(none)");
 
 	/* Step 1: Set up Unix socket */
