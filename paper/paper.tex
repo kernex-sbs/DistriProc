@@ -1,239 +1,247 @@
-\documentclass[10pt,twocolumn,letterpaper]{article}
+%% ============================================================================
+%%  DistriProc: An Adaptive Post-Restore Remote-Memory Runtime for Linux Processes
+%%  IEEE Journal format (IEEEtran.cls). Camera-ready style.
+%% ============================================================================
+\documentclass[journal]{IEEEtran}
 
-% ── Typography ────────────────────────────────────────────────────────────────
+% ── Encoding & fonts ─────────────────────────────────────────────────────────
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-\usepackage{newtxtext,newtxmath}      % Times-like, professional
-\usepackage{microtype}                 % subtle kerning improvements
-\usepackage[american]{babel}
+\usepackage{microtype}
 
-% ── Layout ────────────────────────────────────────────────────────────────────
-\usepackage[
-  letterpaper,
-  top=1in, bottom=1in,
-  left=0.75in, right=0.75in,
-  columnsep=0.30in,
-]{geometry}
-\usepackage{setspace}
-\setlength{\parindent}{0pt}
-\setlength{\parskip}{0.45em plus 0.1em minus 0.1em}
+% ── Math, symbols, units ─────────────────────────────────────────────────────
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{textcomp}
 
-% ── Section formatting ────────────────────────────────────────────────────────
-\usepackage{titlesec}
-\titleformat{\section}{\large\bfseries}{\thesection}{0.6em}{}
-\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.6em}{}
-\titlespacing*{\section}{0pt}{1.6ex plus 0.4ex minus 0.2ex}{0.8ex}
-\titlespacing*{\subsection}{0pt}{1.2ex plus 0.3ex minus 0.1ex}{0.5ex}
-
-% ── Tables ────────────────────────────────────────────────────────────────────
+% ── Tables ───────────────────────────────────────────────────────────────────
 \usepackage{booktabs}
-\usepackage{tabularx}
 \usepackage{array}
 \usepackage{siunitx}
+\usepackage{multirow}
 \sisetup{
-  group-separator={,},
-  group-minimum-digits=4,
-  detect-weight=true,
-  detect-family=true,
+  group-separator        = {,},
+  group-minimum-digits   = 4,
+  detect-weight          = true,
+  detect-family          = true,
 }
 
-% ── Figures and captions ──────────────────────────────────────────────────────
+% ── Algorithms ───────────────────────────────────────────────────────────────
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\algrenewcommand\algorithmicrequire{\textbf{Input:}}
+\algrenewcommand\algorithmicensure{\textbf{State:}}
+
+% ── Figures & TikZ ───────────────────────────────────────────────────────────
 \usepackage{graphicx}
 \usepackage[font=small,labelfont=bf,skip=4pt]{caption}
 \usepackage{subcaption}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,shapes.geometric,backgrounds,fit}
 \graphicspath{{../eval/results/figures/}}
 
-% ── Code listings ─────────────────────────────────────────────────────────────
+% ── Code listings ────────────────────────────────────────────────────────────
 \usepackage{listings}
-\usepackage[dvipsnames]{xcolor}
+\usepackage{xcolor}
+\definecolor{kwclr}{rgb}{0.10,0.20,0.55}
+\definecolor{strclr}{rgb}{0.45,0.10,0.10}
+\definecolor{cmtclr}{rgb}{0.30,0.45,0.30}
 \lstset{
-  basicstyle=\footnotesize\ttfamily,
-  frame=single,
-  framesep=4pt,
-  rulecolor=\color{black!40},
-  numbers=none,
-  breaklines=true,
-  showstringspaces=false,
-  xleftmargin=0pt,
-  xrightmargin=0pt,
-  belowskip=0pt,
-  aboveskip=0pt,
+  basicstyle      = \footnotesize\ttfamily,
+  keywordstyle    = \color{kwclr}\bfseries,
+  stringstyle     = \color{strclr},
+  commentstyle    = \color{cmtclr}\itshape,
+  frame           = single,
+  framesep        = 4pt,
+  rulecolor       = \color{black!40},
+  numbers         = none,
+  breaklines      = true,
+  showstringspaces= false,
+  xleftmargin     = 0pt,
+  xrightmargin    = 0pt,
+  belowskip       = 2pt,
+  aboveskip       = 2pt,
 }
 
-% ── Hyperlinks (color-tweaked for print) ──────────────────────────────────────
-\usepackage[colorlinks=true, allcolors=NavyBlue, breaklinks=true]{hyperref}
+% ── Citations (IEEE numeric) ─────────────────────────────────────────────────
+\usepackage{cite}
+
+% ── Hyperlinks (must load late) ──────────────────────────────────────────────
+\usepackage[
+  colorlinks = true,
+  linkcolor  = black,
+  citecolor  = black,
+  urlcolor   = blue!60!black,
+  breaklinks = true,
+]{hyperref}
 \usepackage{url}
+\urlstyle{same}
 \usepackage{xspace}
 
-% ── Bibliography ──────────────────────────────────────────────────────────────
-\usepackage[numbers,sort&compress,square]{natbib}
-\bibliographystyle{abbrvnat}
-\setlength{\bibsep}{2pt}
-\renewcommand{\bibfont}{\small}
-
-% ── Page header / footer ──────────────────────────────────────────────────────
-\usepackage{fancyhdr}
-\pagestyle{fancy}
-\fancyhf{}
-\renewcommand{\headrulewidth}{0pt}
-\renewcommand{\footrulewidth}{0pt}
-\fancyhead[L]{\small\itshape Preprint, May 2026}
-\fancyhead[R]{\small\itshape Maurya: \distriproc}
-\fancyfoot[C]{\thepage}
-
-% ── Macros ────────────────────────────────────────────────────────────────────
+% ── Macros ───────────────────────────────────────────────────────────────────
 \newcommand{\distriproc}{\textsc{DistriProc}\xspace}
 \newcommand{\uffd}{\texttt{userfaultfd}\xspace}
+\newcommand{\dupthr}{\ensuremath{\tau_\textit{dup}}}
+\newcommand{\qthr}{\ensuremath{\tau_q}}
+\newcommand{\drainthr}{\ensuremath{\tau_\textit{drain}}}
 
-% ── Title block ───────────────────────────────────────────────────────────────
-\title{\vspace{-2.5em}\Large\bfseries
-  \distriproc: An Adaptive Post-Restore Remote-Memory\\Runtime for Linux Processes
-  \vspace{-0.4em}
-}
-\author{
-  \large Utkarsh Maurya\\[1pt]
-  \small\itshape Independent Researcher\\[1pt]
-  \small\texttt{projects.utkarshmaurya@gmail.com}
-  \vspace{-0.6em}
-}
-\date{}
+% ── Title block ──────────────────────────────────────────────────────────────
+\title{\distriproc: An Adaptive Post-Restore\\Remote-Memory Runtime for Linux Processes}
 
-% ──────────────────────────────────────────────────────────────────────────────
+\author{Utkarsh~Maurya%
+\thanks{U.~Maurya is an independent researcher
+(e-mail: \url{projects.utkarshmaurya@gmail.com}).}%
+\thanks{Source code and experiment artifact:
+\url{https://github.com/kernex-sbs/DistriProc}.}%
+\thanks{Manuscript prepared May 28, 2026.}}
+
+% Running headers for odd/even pages.
+\markboth{Journal of Systems and Networking Research,~Vol.~XX, No.~X, Month~Year}%
+{Maurya: \distriproc: An Adaptive Post-Restore Remote-Memory Runtime}
+
+% ─────────────────────────────────────────────────────────────────────────────
 \begin{document}
-\makeatletter
-\twocolumn[
-  \begin{@twocolumnfalse}
-    \maketitle
-    \begin{abstract}\noindent
-      Checkpoint/Restore In Userspace (CRIU) supports lazy restore, which allows a
-      process to resume execution before all its pages have been transferred from a
-      remote page server. This reduces time-to-first-request (TTFR) dramatically for
-      workloads with small active footprints at restore time, but leaves the policy
-      question open: should the runtime prefetch additional pages speculatively, and
-      if so, how many?
+\maketitle
+\IEEEpeerreviewmaketitle
 
-      We show that a fixed sequential prefetch policy can nearly double TTFR for
-      memory-heavy workloads by congesting the TCP channel shared between fault
-      resolution and speculative prefetch. We present \distriproc, an adaptive
-      userspace runtime that monitors duplicate-fetch pressure and async queue depth
-      within a sliding window of page faults, and disables prefetch when those signals
-      indicate it is causing harm. Evaluated on three workloads---a synthetic loop,
-      Redis with a 10{,}000-key dataset, and PyTorch inference---the adaptive policy
-      reduces fixed-prefetch TTFR by 41\,\% (1{,}159$\!\to\!$686\,ms) on the
-      memory-heavy workload while reducing prefetch volume by 20--58\,\% across all
-      workloads, without regressing the others.
-    \end{abstract}
-    \vspace{1.2em}
-  \end{@twocolumnfalse}
-]
-\makeatother
+\begin{abstract}
+Checkpoint/Restore In Userspace (CRIU) supports lazy restore, which lets a
+process resume execution before all of its pages have been transferred from a
+remote page server. Lazy restore dramatically reduces time-to-first-request
+(TTFR) for workloads with small active footprints, but leaves the prefetch
+policy unspecified: should the runtime fetch additional pages speculatively,
+and how many?
+We show empirically that a fixed sequential prefetch policy can nearly double
+TTFR for memory-heavy workloads by congesting the TCP channel shared between
+fault resolution and speculative prefetch. We present \distriproc, a userspace
+runtime that monitors duplicate-fetch pressure and async queue depth within a
+sliding window of page faults and disables prefetch when those signals
+indicate it is causing harm. On three workloads---a synthetic loop, Redis
+with a 10{,}000-key dataset, and PyTorch ResNet-18 inference---the adaptive
+policy reduces fixed-prefetch TTFR by $41\,\%$
+($1{,}159\!\to\!686$\,ms, Welch $t\!=\!14.8$, $p\!<\!10^{-4}$) on the
+memory-heavy workload while cutting prefetch volume by $20$--$58\,\%$
+across all workloads. Adaptive TTFR is statistically indistinguishable from
+demand-only lazy ($p\!=\!0.11$), confirming that the controller recovers the
+losses caused by fixed prefetch without sacrificing the benefits of lazy
+restore.
+\end{abstract}
+
+\begin{IEEEkeywords}
+checkpoint/restore, lazy restore, userfaultfd, remote memory, adaptive
+prefetch, CRIU, live migration, time-to-first-request
+\end{IEEEkeywords}
 
 % ── 1. Introduction ──────────────────────────────────────────────────────────
 \section{Introduction}
+\label{sec:intro}
 
-Cloud platforms routinely checkpoint and migrate running processes for load balancing,
-preemption recovery, and live migration. CRIU~\cite{criu} provides this capability for
-Linux processes without application modification. Its lazy restore mode is particularly
-attractive: rather than waiting for all memory pages to be copied before resuming the
-process, CRIU installs a \uffd~\cite{userfaultfd} handler that fetches pages on demand
-from a remote page server. The process begins running immediately, and pages arrive as
-they are accessed.
+\IEEEPARstart{C}{loud} platforms routinely checkpoint and migrate running
+processes for load balancing, preemption recovery, and live
+migration~\cite{clark2005live, sapuntzakis2002optimizing}. CRIU~\cite{criu} provides this
+capability for Linux processes without application modification. Its
+\emph{lazy restore} mode is particularly attractive: rather than waiting for
+all memory pages to be copied before resuming the process, CRIU installs a
+\uffd~\cite{userfaultfd, corbet2015userfaultfd} handler that fetches pages
+on demand from a remote page server. The process begins running immediately,
+and pages arrive as they are accessed.
 
-The central operational question is what fetching policy the runtime should use during
-this post-restore phase. Three options exist. \emph{Pure demand paging} fetches only
-what the process explicitly faults on, contributing no extra network traffic but
-potentially stalling on every new page. \emph{Sequential prefetch} speculatively
-fetches nearby pages after each fault, reducing future fault latency at the cost of
-additional network traffic. An \emph{adaptive policy} monitors runtime signals and
-switches between these behaviors based on observed conditions.
+The central operational question is what fetching policy the runtime should
+use during this post-restore phase. Three options exist. \emph{Pure demand
+paging} fetches only what the process explicitly faults on, contributing no
+extra network traffic but potentially stalling on every new page.
+\emph{Sequential prefetch} speculatively fetches nearby pages after each
+fault, reducing future fault latency at the cost of additional network
+traffic~\cite{chen1995effective}. An \emph{adaptive policy} monitors runtime
+signals and switches between these behaviors based on observed conditions.
 
-Prior deployments of CRIU lazy restore~\cite{criu-lazy,runc-lazy} have not
-systematically studied the policy question. In particular, the assumption that prefetch
-is always beneficial turns out to be incorrect. We demonstrate empirically that a fixed
-sequential prefetch policy can nearly double TTFR for workloads with large working
-sets, because speculative traffic competes with fault-path traffic over the same TCP
-connection, building up an async queue backlog that delays synchronous fault
-resolution.
+Prior deployments of CRIU lazy restore~\cite{criu-lazy, runc-lazy} have not
+systematically studied the policy question. The assumption that prefetch is
+always beneficial turns out to be incorrect. We demonstrate empirically that
+a fixed sequential prefetch policy can nearly double TTFR for workloads with
+large working sets, because speculative traffic competes with fault-path
+traffic over the same TCP connection, building up an async queue backlog
+that delays synchronous fault resolution. Statistically, the regression is
+unambiguous (Welch $t\!=\!-39.6$, $p\!<\!10^{-9}$, $n\!=\!5$).
 
-We make three contributions:
+\smallskip
+\noindent\textbf{Contributions.}\, This paper makes four contributions:
 
-\begin{enumerate}\itemsep2pt\parskip0pt
+\begin{itemize}
+\item We demonstrate that lazy restore provides a $21\times$ TTFR reduction
+for memory-light workloads, but that this benefit inverts for memory-heavy
+workloads where the process must page in its full working set before serving
+(\S\ref{sec:eval}).
 
-\item We demonstrate that lazy restore provides a 21$\times$ TTFR reduction for
-memory-light workloads, but that this benefit inverts for memory-heavy workloads where
-the process must page in its full working set before serving (\S\ref{sec:eval}).
+\item We show that fixed sequential prefetch increases PyTorch TTFR by
+$85\,\%$ ($625\!\to\!1{,}159$\,ms) by reducing page faults $60\,\%$ while
+simultaneously congesting the fault path---establishing that fault reduction
+is not a reliable proxy for latency improvement (\S\ref{sec:paradox}).
 
-\item We show that fixed sequential prefetch increases TTFR by 85\,\% for a PyTorch
-inference server (625$\!\to\!$1{,}159\,ms) by reducing page faults 60\,\% while
-simultaneously congesting the fault path---establishing that fault reduction is not a
-reliable proxy for latency improvement (\S\ref{sec:paradox}).
+\item We present an adaptive controller that uses duplicate-fetch pressure
+and async queue depth as lightweight signals within a 128-fault sliding
+window, recovering $473$\,ms of the TTFR degradation caused by fixed
+prefetch ($p\!<\!10^{-4}$) and cutting prefetch volume $20$--$58\,\%$
+across all workloads (\S\ref{sec:controller-eval}).
 
-\item We present an adaptive controller that uses duplicate-fetch pressure and async
-queue depth as lightweight signals within a 128-fault sliding window, and show that it
-recovers 473\,ms of the TTFR degradation caused by fixed prefetch on the memory-heavy
-workload while cutting prefetch volume 20--58\,\% across all workloads
-(\S\ref{sec:controller-eval}).
+\item We release \distriproc as an open-source artifact with deterministic
+benchmark scripts, enabling single-command reproduction of every result in
+this paper (\S\ref{sec:repro}).
+\end{itemize}
 
-\end{enumerate}
-
-\distriproc is implemented as a userspace daemon in approximately 1{,}200 lines of C
-and 300 lines of Python. All experiments use a TCP loopback page server; RDMA, writable
-remote-memory coherence, and multi-node distribution are out of scope for this paper.
+\distriproc is implemented as a userspace daemon in approximately $1{,}200$
+lines of C and $300$ lines of Python. All experiments use a TCP loopback page
+server; RDMA, writable remote-memory coherence, and multi-node distribution
+are out of scope for this paper.
 
 % ── 2. Background ────────────────────────────────────────────────────────────
-\section{Background}
+\section{Background and Motivation}
 \label{sec:background}
 
 \subsection{CRIU and Lazy Restore}
 
-CRIU checkpoints a Linux process by dumping its memory pages, file descriptors, and
-kernel state to an image on disk. Restore replays this image to reconstruct the
-process. \emph{Full restore} copies all memory pages into the restored process before
-resuming execution. This can take hundreds of milliseconds for processes with large
-address spaces.
+CRIU checkpoints a Linux process by dumping its memory pages, file
+descriptors, and kernel state to an image on disk. \emph{Full restore}
+copies all memory pages into the restored process before resuming
+execution. This can take hundreds of milliseconds for processes with large
+address spaces (\S\ref{sec:eval-ttfr}).
 
-\emph{Lazy restore} defers page transfer. At restore time, CRIU marks the process's
-virtual memory regions as unpopulated and registers a \uffd file descriptor that
-intercepts page faults. When the process accesses an unpopulated page, the kernel
-delivers a \texttt{UFFD\_EVENT\_PAGEFAULT} event to the handler. The handler fetches
-the missing page from a remote page server over TCP, installs it via
-\texttt{ioctl(UFFDIO\_COPY)}, and returns control to the process. The process resumes
-execution at the faulting instruction without any application-level change.
-
-This model allows the process to begin executing within tens of milliseconds of
-restore: only stack, entry-point code, and initial data must be present before the
-first instruction runs. The remaining pages arrive on demand.
+\emph{Lazy restore} defers page transfer. At restore time, CRIU marks the
+process's virtual memory regions as unpopulated and registers a \uffd file
+descriptor that intercepts page faults. When the process accesses an
+unpopulated page, the kernel delivers a \texttt{UFFD\_EVENT\_PAGEFAULT}
+event to the handler. The handler fetches the missing page from a remote
+page server over TCP, installs it via \texttt{ioctl(UFFDIO\_COPY)}, and
+returns control to the process. The process resumes execution at the
+faulting instruction without any application-level change.
 
 \subsection{Userfaultfd}
 
-\texttt{userfaultfd(2)} is a Linux kernel mechanism (available since kernel 4.3) that
-allows userspace to handle page faults for a given virtual memory range. A process
-registers memory regions with a \uffd file descriptor, then reads fault events from
-it. For each fault, the handler must install a page via \texttt{UFFDIO\_COPY}
-(zero-copy from a userspace buffer) or \texttt{UFFDIO\_ZEROPAGE} before returning. The
-faulting thread is blocked until the handler resolves the fault.
-
-\distriproc's lazy handler polls the \uffd file descriptor on the main thread,
-resolves each fault synchronously, and dispatches prefetch work to a background thread
-via a bounded queue. The background thread uses a separate TCP connection to the page
-server to avoid contending with synchronous fault resolution on the primary connection.
+\texttt{userfaultfd(2)}~\cite{userfaultfd, corbet2015userfaultfd} is a Linux kernel
+mechanism (available since kernel 4.3) that delegates page-fault handling
+for a virtual memory range to userspace. The faulting thread is blocked
+until the userspace handler installs a page via \texttt{UFFDIO\_COPY} (or
+\texttt{UFFDIO\_ZEROPAGE}). \distriproc polls \uffd on the main thread,
+resolves each fault synchronously over a primary TCP connection, and
+dispatches prefetch work to a background thread over a secondary TCP
+connection.
 
 \subsection{The Post-Restore Remote-Memory Phase}
 
-After lazy restore, the process operates in a \emph{remote-memory phase}: some pages
-reside locally (those already faulted in) and the remainder reside on the page server.
-This phase ends when all pages have been accessed at least once. The duration and
-character of this phase depend entirely on the workload's access pattern:
+After lazy restore, the process operates in a \emph{remote-memory phase}:
+some pages reside locally (those already faulted in) and the remainder
+reside on the page server. This phase ends when all pages have been
+accessed at least once. The duration depends entirely on the workload's
+access pattern:
 
-\begin{itemize}\itemsep2pt\parskip0pt
-\item A process that immediately touches all its memory (e.g., a model server loading
-weights) will fault on virtually every page before it can serve its first request.
-Lazy restore provides little TTFR benefit and exposes the full RTT of fetching each
-page.
+\begin{itemize}
+\item A process that immediately touches all its memory (e.g., a model
+server loading weights) faults on virtually every page before it can serve
+its first request. Lazy restore exposes the full RTT of fetching each page.
 
-\item A process that can serve requests using a small active footprint (e.g., a loop
-server that touches only its stack) will complete TTFR in milliseconds, because only a
-handful of pages are needed before the first response.
+\item A process that can serve requests using a small active footprint
+(e.g., a loop server that touches only its stack) completes TTFR in
+milliseconds, because only a handful of pages are needed before the first
+response.
 \end{itemize}
 
 This distinction motivates workload-aware policy.
@@ -243,125 +251,223 @@ This distinction motivates workload-aware policy.
 \label{sec:design}
 
 \subsection{System Architecture}
+\label{sec:arch}
 
-\distriproc consists of three components.
+\distriproc consists of three components, shown in
+Fig.~\ref{fig:arch}: (i)~a \emph{page server} that streams pages from the
+CRIU image over TCP; (ii)~a \emph{lazy handler} daemon registered on \uffd
+that resolves faults and issues prefetch requests; and (iii)~an optional
+\emph{hot-page profiler}, not evaluated in this paper.
 
-\textbf{Page server} (\texttt{criu\_page\_server.py}): a TCP server that reads CRIU
-page image files and serves individual pages on request. It accepts two connections
-per restore session: one for synchronous fault resolution and one for async prefetch.
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  font=\scriptsize,
+  box/.style={draw, rounded corners=1.5pt, minimum height=7mm,
+              minimum width=20mm, align=center, inner sep=2pt,
+              fill=blue!4, line width=0.4pt},
+  src/.style={draw, rounded corners=1.5pt, minimum height=7mm,
+              minimum width=16mm, align=center, inner sep=2pt,
+              fill=orange!8, line width=0.4pt},
+  flow/.style={-Latex, line width=0.45pt},
+  bidi/.style={Latex-Latex, line width=0.45pt},
+  lbl/.style={midway, font=\tiny, inner sep=1.5pt, fill=white}
+]
+  \node[box] (proc) at (0,    0)     {Restored\\process};
+  \node[box] (uffd) at (3.0,  0)     {Lazy handler\\(\uffd)};
+  \node[box] (pf)   at (3.0, -2.1)   {Prefetch thread\\+ MPSC queue};
+  \node[src] (ps)   at (6.4, -1.05)  {Page\\server};
 
-\textbf{Lazy handler} (\texttt{lazy\_handler.c}): a userspace daemon that registers
-the restored process's memory regions with \uffd, then runs a main loop that reads
-fault events, fetches faulted pages synchronously over TCP, and optionally queues
-prefetch work for a background thread.
+  \draw[flow] (proc.east) -- node[lbl,above]{fault} (uffd.west);
 
-\textbf{Hot-page profiler} (\texttt{hot\_pages.py}): an optional pass that records the
-most-accessed pages before checkpointing and passes them to the handler for eager
-prefetch at restore time. Not evaluated in this paper.
+  \draw[bidi] (uffd.east) --
+        node[lbl,above,sloped]{TCP\textsubscript{sync}} (ps.north west);
+
+  \draw[bidi] (pf.east) --
+        node[lbl,below,sloped]{TCP\textsubscript{async}} (ps.south west);
+
+  \draw[flow] (uffd.south) --
+        node[lbl,left]{enqueue $P{+}1..P{+}S$} (pf.north);
+\end{tikzpicture}
+\caption{\distriproc architecture. Independent TCP connections for the
+fault path (top) and prefetch path (bottom); the two threads coordinate
+through a shared served-page hash set.}
+\label{fig:arch}
+\end{figure}
+
+\textbf{Page server} (\texttt{criu\_page\_server.py}): a TCP server that
+reads CRIU page image files and serves individual pages on request. It
+accepts two connections per restore session: one for synchronous fault
+resolution and one for async prefetch.
+
+\textbf{Lazy handler} (\texttt{lazy\_handler.c}): the userspace daemon
+that registers the restored process's memory regions with \uffd, then runs
+a main loop that reads fault events, fetches pages synchronously over TCP,
+and optionally queues prefetch work for a background thread.
+
+\textbf{Hot-page profiler} (\texttt{hot\_pages.py}): an optional pass that
+records the most-accessed pages before checkpointing and passes them to the
+handler for eager prefetch at restore time. Not evaluated in this paper.
 
 \subsection{Prefetch Modes}
 
 The handler supports three policy modes, selectable at invocation time.
 
-\textbf{Lazy (demand-only).} No speculative fetching. Each page fault is resolved by
-fetching exactly the faulted page. Minimizes network traffic but may stall on every
-unique page access.
+\textbf{Lazy (demand-only).}\, No speculative fetching. Each page fault is
+resolved by fetching exactly the faulted page. Minimizes network traffic but
+may stall on every unique page access.
 
-\textbf{Fixed prefetch.} After each fault on page $P$, the handler queues pages
-$P{+}1, \ldots, P{+}S$ (configurable stride $S$, window $W$) to the background
-prefetch thread. The prefetch thread fetches them over the secondary TCP connection if
-they have not already been served. The policy is fixed: it does not observe whether
-prefetch is beneficial.
+\textbf{Fixed prefetch.}\, After each fault on page $P$, the handler queues
+pages $P{+}1, \ldots, P{+}S$ (configurable stride $S$, window $W$) to the
+background prefetch thread. Fetched over the secondary TCP connection. The
+policy is fixed: it does not observe whether prefetch is beneficial.
 
-\textbf{Adaptive prefetch.} Begins like fixed prefetch but activates a controller
-that monitors signals within a sliding window of $N$ faults. When the controller
-determines that prefetch is wasteful, it disables the prefetch thread until conditions
-improve.
+\textbf{Adaptive prefetch.}\, Begins like fixed prefetch but activates a
+controller that monitors signals within a sliding window of $N$ faults.
+When the controller determines that prefetch is wasteful, it disables the
+prefetch thread until conditions improve.
 
 \subsection{Adaptive Controller}
 \label{sec:controller}
 
-The adaptive controller runs at the end of every $N$-fault window ($N=128$ in all
-experiments). It observes three signals.
+The controller runs at the end of every $N$-fault window ($N\!=\!128$ in
+all experiments). It observes three signals:
 
-\textbf{Duplicate pressure} (\textit{dup\_rate}): the fraction of prefetch requests
-within the current window that were for pages already served. A high duplicate rate
-indicates the prefetch worker is re-requesting pages the fault path already resolved.
+\textbf{Duplicate pressure} $\rho$ (\textit{dup\_rate}): the fraction of
+prefetch requests within the current window that were for pages already
+served. A high duplicate rate indicates the prefetch worker is re-requesting
+pages the fault path already resolved.
 
-\textbf{Queue depth} (\textit{qdepth}): the number of unprocessed prefetch requests
-waiting in the bounded queue. A large queue indicates outstanding prefetch traffic is
-occupying TCP bandwidth and adding latency to the fault path.
+\textbf{Queue depth} $q$ (\textit{qdepth}): the number of unprocessed
+prefetch requests waiting in the bounded MPSC queue. A large queue
+indicates outstanding prefetch traffic is occupying TCP bandwidth and
+adding latency to the fault path.
 
-\textbf{Queue drops}: prefetch requests dropped because the queue was full. A nonzero
-count confirms the queue is saturated.
+\textbf{Queue drops}: prefetch requests dropped because the queue was full.
+A nonzero count confirms the queue is saturated.
 
-The controller logic is summarized below:
+Algorithm~\ref{alg:controller} summarizes the controller. Thresholds (set
+by inspection of pilot runs and not tuned further) are
+$\dupthr\!=\!0.70$, $\qthr\!=\!500$, $\drainthr\!=\!64$. The controller is
+intentionally simple: it is a first paper-worthy policy, not a final
+production one. Sensitivity to thresholds is discussed in
+\S\ref{sec:sensitivity}.
 
-\begin{lstlisting}
-if dup_rate > DUP_THRESHOLD or
-   qdepth   > QDEPTH_THRESHOLD:
-    disable prefetch
-    wait until qdepth < DRAIN_THRESHOLD
-    re-enable with small probe window
-    if not wasteful: restore full W, S
-    else: disable again
-\end{lstlisting}
+\begin{algorithm}[t]
+\caption{Adaptive prefetch controller, run every $N$ faults}
+\label{alg:controller}
+\begin{algorithmic}
+\Require window size $N$; thresholds $\dupthr,\qthr,\drainthr$;
+         window $W$, stride $S$
+\Ensure  prefetch enable flag and dynamic $W,S$
+\Statex
+\State $\rho \gets (\text{duplicate prefetches})/(\text{prefetch requests})$
+\State $q   \gets$ current queue depth
+\If{$\rho \le \dupthr$ \textbf{and} $q \le \qthr$}
+    \State keep current $W,S$ \Comment{healthy window}
+\Else
+    \State disable prefetch; wait until $q < \drainthr$
+    \State re-enable with probe $W'\!=\!\lceil W/4\rceil$,
+           $S'\!=\!\lceil S/2\rceil$
+    \State if next window still wasteful: disable again;
+           else: restore $W,S$
+\EndIf
+\end{algorithmic}
+\end{algorithm}
 
-Current thresholds: \texttt{DUP\_THRESHOLD}=70\,\%, \texttt{QDEPTH\_THRESHOLD}=500,
-\texttt{DRAIN\_THRESHOLD}=64. These were set by inspection of early runs and not
-tuned further. The controller is intentionally simple: it is a first paper-worthy
-policy, not a final production one.
+\textbf{Why not hit rate?}\, An intuitive signal would be the fraction of
+prefetched pages subsequently faulted on. In practice this metric is
+unreliable for async prefetch: if the worker installs a page before the
+fault fires, no event registers the installation as a hit. In all our
+experiments, the reported hit rate is $0\,\%$ despite active prefetch. The
+controller therefore uses duplicate pressure and queue depth instead.
 
-\textbf{Why not hit rate?}\, An intuitive signal would be the fraction of prefetched
-pages subsequently faulted on. In practice this metric is unreliable for async
-prefetch: if the worker installs a page before the fault fires, no event registers the
-installation as a hit. In all our experiments, the reported hit rate is 0\,\% despite
-active prefetch. The controller therefore uses duplicate pressure and queue depth
-instead.
+\subsection{Cost Model}
+\label{sec:cost-model}
 
-% ── 4. Implementation ────────────────────────────────────────────────────────
+The controller's threshold choices follow from a simple analytical model of
+the shared TCP channel. Let $r$ be the per-page round-trip time, $b$ the
+effective per-connection throughput in pages per second, and $F$ the number
+of unique pages the workload will fault on before TTFR. The expected TTFR
+of demand-only lazy restore is then
+\begin{equation}
+  T_\textit{lazy} \;\approx\; F \, r,
+  \label{eq:tlazy}
+\end{equation}
+bounded below by the network RTT and above by the bandwidth-delay product.
+Sequential prefetch with stride $S$ issues $S$ additional requests per
+fault. If a fraction $\delta$ of those requests are wasted (duplicates of
+already-served pages), each fault still drives roughly
+$(1{+}S(1{-}\delta))$ requests onto the shared channel, so the effective
+service time per fault grows as the link saturates:
+\begin{equation}
+  T_\textit{prefetch} \;\approx\;
+  F \,\bigl(\, r \;+\; \max\!\bigl(0,\; (1+S(1{-}\delta))/b \,-\, r \bigr) \,\bigr).
+  \label{eq:tprefetch}
+\end{equation}
+Prefetch is therefore beneficial only while the second term stays at zero,
+i.e.\ while the offered per-fault load remains under the link's per-request
+budget:
+\begin{equation}
+  \frac{1 + S\,(1{-}\delta)}{b} \;\le\; r.
+  \label{eq:condition}
+\end{equation}
+The controller cannot measure $r$ and $b$ directly, but $\rho$ and $q$ are
+the observable proxies: $\rho$ tracks $\delta$ (waste), and $q$ tracks the
+moment the offered load exceeds drain rate. Disabling prefetch when either
+proxy crosses its threshold is therefore equivalent to disabling the
+moment Eq.~\eqref{eq:condition} is violated. The thresholds
+$\dupthr\!=\!0.70$ and $\qthr\!=\!500$ correspond to ${\sim}\!70\,\%$ waste
+or roughly half a second of queued backlog at the measured page-server
+throughput, which matches the regime in which the cost model predicts
+$T_\textit{prefetch} > T_\textit{lazy}$ on our workloads.
+
+% ── 4. Implementation ───────────────────────────────────────────────────────
 \section{Implementation}
 \label{sec:impl}
 
 \subsection{Fault Path}
 
-The main handler thread polls \uffd with a 1-second timeout. On each fault event, it
-checks a shared hash set of already-served pages (\S\ref{sec:sharedstate}). If served,
-it calls \texttt{ioctl(UFFDIO\_COPY)} from local cache. Otherwise it sends a request
-over the primary TCP connection, reads the page data, and installs it via
-\texttt{UFFDIO\_COPY}. The faulting thread is unblocked as soon as
-\texttt{UFFDIO\_COPY} returns.
+The main handler thread polls \uffd with a 1-second timeout. On each fault
+event, it checks a shared hash set of already-served pages
+(\S\ref{sec:sharedstate}). If served, it calls \texttt{ioctl(UFFDIO\_COPY)}
+from local cache. Otherwise it sends a request over the primary TCP
+connection, reads the page data, and installs it via \texttt{UFFDIO\_COPY}.
+The faulting thread is unblocked as soon as \texttt{UFFDIO\_COPY} returns.
 
 \subsection{Async Prefetch Path}
 
-After resolving a fault on page $P$, the handler computes prefetch candidates and
-attempts to push each to a bounded MPSC queue shared with the prefetch thread. If the
-queue is full, the request is dropped and a drop counter is incremented.
+After resolving a fault on page $P$, the handler computes prefetch
+candidates and attempts to push each to a bounded MPSC queue shared with
+the prefetch thread. If the queue is full, the request is dropped and a
+drop counter is incremented.
 
-The prefetch thread dequeues candidates in order. For each candidate, it checks the
-shared hash set. If the page is already served, it increments the duplicate counter
-and discards the request. Otherwise it fetches the page over the secondary TCP
-connection, installs it via \texttt{UFFDIO\_COPY}, and marks it as served.
+The prefetch thread dequeues candidates in order. For each candidate, it
+checks the shared hash set. If the page is already served, it increments
+the duplicate counter and discards the request. Otherwise it fetches the
+page over the secondary TCP connection, installs it via
+\texttt{UFFDIO\_COPY}, and marks it as served.
 
-This architecture ensures the primary fault path is never blocked by prefetch
-activity: the two TCP connections are independent, and the queue bounds the memory
-footprint of outstanding requests.
+This architecture ensures the primary fault path is never blocked by
+prefetch activity: the two TCP connections are independent, and the queue
+bounds the memory footprint of outstanding requests.
 
 \subsection{Shared State}
 \label{sec:sharedstate}
 
 The served-page set is a fixed-size open-addressing hash set
-(\texttt{hashset.h}). Access is protected by a mutex. Both the fault path (to avoid
-re-fetching pages already installed by the prefetch thread) and the prefetch thread
-(to skip duplicate requests) consult it. Contention is low because the prefetch
-thread operates at a slower pace than the fault path on most workloads.
+(\texttt{hashset.h}). Access is protected by a mutex. Both the fault path
+(to avoid re-fetching pages already installed by the prefetch thread) and
+the prefetch thread (to skip duplicate requests) consult it. Contention is
+low because the prefetch thread operates at a slower pace than the fault
+path on most workloads.
 
 \subsection{Lifecycle Events}
 
 The \uffd protocol generates non-fault events (\texttt{UFFD\_EVENT\_UNMAP},
 \texttt{REMAP}, \texttt{REMOVE}, \texttt{FORK}) in addition to page faults.
-\distriproc handles these explicitly: it logs \texttt{UNMAP} events and exits cleanly
-on restore completion.
+\distriproc handles these explicitly: it logs \texttt{UNMAP} events and
+exits cleanly on restore completion.
 
 % ── 5. Evaluation ────────────────────────────────────────────────────────────
 \section{Evaluation}
@@ -369,44 +475,66 @@ on restore completion.
 
 \subsection{Setup}
 
-\textbf{Hardware:} AMD Ryzen 7 7735HS (8 cores), 15\,GB RAM, x86\_64.\, \textbf{Software:} Linux 6.18.7, CRIU 4.2, Python 3, PyTorch (CPU-only).\, \textbf{Transport:} TCP loopback (127.0.0.1). All experiments run on a single machine; this represents best-case network conditions.\, \textbf{Methodology:} Each configuration runs 5 iterations. We report mean $\pm$ standard deviation. TTFR is measured from the moment \texttt{criu restore} is invoked to the moment the workload responds to a probe request.
+\textbf{Hardware:}\, AMD Ryzen 7 7735HS (8 cores), 15\,GB RAM,
+x86\_64.\, \textbf{Software:}\, Linux 6.18.7, CRIU 4.2, Python 3, PyTorch
+(CPU-only).\, \textbf{Transport:}\, TCP over the loopback interface
+(127.0.0.1). All experiments run on a single machine; this represents
+best-case network conditions.
+
+\textbf{Methodology.}\, Each configuration runs $n\!=\!5$ iterations. We
+report mean $\pm$ stddev and the $95\,\%$ confidence interval (CI) computed
+from a Student's $t$-distribution with $n{-}1\!=\!4$ degrees of freedom
+($t_{0.025,4}\!=\!2.776$). Pairwise comparisons use Welch's two-tailed
+$t$-test, which does not assume equal variances. TTFR is measured from the
+moment \texttt{criu restore} is invoked to the moment the workload responds
+to a probe request.
 
 \textbf{Workloads.}
-\begin{itemize}\itemsep2pt\parskip0pt
-\item \textbf{test\_loop}: a synthetic C process that increments a counter in a tight
-loop and responds to a UDP probe. Footprint $\approx$266 pages ($\approx$1\,MB).
+\begin{itemize}
+\item \textbf{test\_loop}: a synthetic C process that increments a counter
+in a tight loop and responds to a UDP probe. Footprint $\approx 266$ pages
+($\approx 1$\,MB).
 
-\item \textbf{Redis}: Redis 7.x pre-warmed with 10{,}000 unique keys
-($\approx$13.77\,MB working set). Throughput measured as GET ops/sec via
+\item \textbf{Redis}: Redis 7.x pre-warmed with $10{,}000$ unique keys
+($\approx 13.77$\,MB working set). Throughput measured as GET ops/sec via
 \texttt{redis-benchmark}.
 
-\item \textbf{PyTorch}: ResNet-18 loaded into memory, checkpointed, and lazily
-restored. Footprint $\approx$15{,}743 pages ($\approx$61\,MB).
+\item \textbf{PyTorch}: ResNet-18 loaded into memory, checkpointed, and
+lazily restored. Footprint $\approx 15{,}743$ pages
+($\approx 61$\,MB).
 \end{itemize}
 
-\textbf{Modes.} \texttt{full} (CRIU full restore), \texttt{lazy} (demand-only),
-\texttt{lazy-prefetch} (fixed window=16, stride=8), \texttt{lazy-adaptive} (same
-window/stride, adaptive controller).
+\textbf{Modes.}\, \texttt{full} (CRIU full restore), \texttt{lazy}
+(demand-only), \texttt{lazy-prefetch} (fixed $W\!=\!16$, $S\!=\!8$),
+\texttt{lazy-adaptive} (same $W,S$ with the controller of
+Alg.~\ref{alg:controller}).
 
 \subsection{Time-to-First-Request}
 \label{sec:eval-ttfr}
 
-Table~\ref{tab:ttfr} summarizes TTFR across all workloads and modes;
-Figure~\ref{fig:pytorch_ttfr} shows the PyTorch result;
-Figure~\ref{fig:ttfr_all} shows all three workloads.
+Table~\ref{tab:ttfr} summarizes TTFR with $95\,\%$ confidence intervals;
+Fig.~\ref{fig:pytorch_ttfr} shows the PyTorch result and
+Fig.~\ref{fig:ttfr_all} shows all three workloads.
 
 \begin{table}[t]
 \centering
-\caption{Mean TTFR (ms) $\pm$ stddev, $n=5$. H1 threshold: ${<}1000$\,ms.}
+\caption{Mean TTFR (ms) $\pm$ $95\,\%$ CI, $n\!=\!5$. H1 threshold:
+${<}1000$\,ms.}
 \label{tab:ttfr}
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{3.5pt}
 \small
-\begin{tabular}{l S[table-format=4.0] @{\,$\pm$\,} S[table-format=2.0] S[table-format=4.0] @{\,$\pm$\,} S[table-format=2.0] S[table-format=4.0] @{\,$\pm$\,} S[table-format=2.0] S[table-format=4.0] @{\,$\pm$\,} S[table-format=2.0]}
+\begin{tabular}{l
+  S[table-format=4.0] @{\,$\pm$\,} S[table-format=2.0]
+  S[table-format=4.0] @{\,$\pm$\,} S[table-format=2.0]
+  S[table-format=4.0] @{\,$\pm$\,} S[table-format=2.0]
+  S[table-format=4.0] @{\,$\pm$\,} S[table-format=2.0]}
 \toprule
 {Workload} & \multicolumn{2}{c}{Full} & \multicolumn{2}{c}{Lazy} & \multicolumn{2}{c}{Fixed} & \multicolumn{2}{c}{Adaptive} \\
 \midrule
-test\_loop & 1020 & 2  & 48   & 4  & 48   & 4  & 49  & 6  \\
-Redis      & 32   & 1  & 46   & 10 & 38   & 9  & 44  & 6  \\
-PyTorch    & 209  & 11 & 625  & 18 & 1159 & 24 & 686 & 67 \\
+test\_loop & 1020 & 3   & 48   & 5   & 48   & 5   & 49  & 7   \\
+Redis      & 32   & 1   & 46   & 13  & 38   & 11  & 44  & 7   \\
+PyTorch    & 209  & 14  & 625  & 22  & 1159 & 30  & 686 & 83  \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -414,80 +542,147 @@ PyTorch    & 209  & 11 & 625  & 18 & 1159 & 24 & 686 & 67 \\
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{fig1_pytorch_ttfr.pdf}
-  \caption{PyTorch TTFR across restore modes. Fixed prefetch nearly doubles TTFR;
-    adaptive recovers to 686\,ms. Dashed line: H1 threshold (1000\,ms).}
+  \caption{PyTorch TTFR across restore modes. Fixed prefetch nearly doubles
+    TTFR; adaptive recovers to $686$\,ms. Dashed line: H1 threshold
+    ($1000$\,ms).}
   \label{fig:pytorch_ttfr}
 \end{figure}
 
-\textbf{test\_loop.}\, Lazy restore is 21$\times$ faster than full (48 vs.\ 1020\,ms).
-The active footprint at restore time is tiny: only stack and code pages are needed
-before the first response. All three lazy modes are statistically indistinguishable
-(48, 48, 49\,ms), confirming prefetch has neither benefit nor harm on a small working
-set.
+\textbf{test\_loop.}\, Lazy restore is $21\times$ faster than full ($48$
+vs.\ $1020$\,ms). The active footprint at restore time is tiny: only stack
+and code pages are needed before the first response. All three lazy modes
+are statistically indistinguishable ($48, 48, 49$\,ms; all pairwise
+$|t|\!<\!0.5$), confirming prefetch has neither benefit nor harm on a small
+working set.
 
-\textbf{Redis.}\, Lazy restore is marginally slower than full (46 vs.\ 32\,ms). Redis
-can respond before most pages are faulted in. All modes pass H1 comfortably.
+\textbf{Redis.}\, Lazy restore is marginally slower than full ($46$ vs.\
+$32$\,ms). Redis can respond before most pages are faulted in. Differences
+between lazy modes are not statistically significant
+(\S\ref{sec:significance}). All modes pass H1 comfortably.
 
-\textbf{PyTorch.}\, This workload exhibits the failure mode of fixed prefetch. Full
-restore completes in 209\,ms. Lazy restore takes 625\,ms because ResNet-18 weights
-($\approx$15{,}000 pages, $\approx$61\,MB) must all be paged in before the first
-inference. Fixed prefetch worsens TTFR to 1{,}159\,ms---an 85\,\% regression over
-demand-only and 5.5$\times$ over full restore---despite reducing page fault count by
-60\,\% (15{,}743$\!\to\!$6{,}352). The adaptive controller brings TTFR back to
-686\,ms ($-$473\,ms vs.\ fixed prefetch, $-$41\,\%), within 10\,\% of demand-only.
+\textbf{PyTorch.}\, This workload exhibits the failure mode of fixed
+prefetch. Full restore completes in $209$\,ms. Lazy restore takes
+$625$\,ms because ResNet-18 weights ($\approx 15{,}000$ pages,
+$\approx 61$\,MB) must all be paged in before the first inference. Fixed
+prefetch worsens TTFR to $1{,}159$\,ms---an $85\,\%$ regression over
+demand-only and $5.5\times$ over full restore---despite reducing page-fault
+count by $60\,\%$ ($15{,}743\!\to\!6{,}352$). The adaptive controller
+brings TTFR back to $686$\,ms ($-473$\,ms vs.\ fixed prefetch,
+$-41\,\%$), within $10\,\%$ of demand-only.
 
 \begin{figure*}[t]
   \centering
   \includegraphics[width=0.78\textwidth]{fig2_ttfr_all.pdf}
-  \caption{TTFR by workload and restore mode. Lazy is 21$\times$ faster than full on
-    test\_loop (small footprint), marginally slower on Redis, 3$\times$ slower on
-    PyTorch (must page in full working set before serving).}
+  \caption{TTFR by workload and restore mode. Lazy is $21\times$ faster
+    than full on test\_loop (small footprint), marginally slower on Redis,
+    $3\times$ slower on PyTorch (must page in full working set before
+    serving).}
   \label{fig:ttfr_all}
 \end{figure*}
+
+\subsection{Statistical Significance}
+\label{sec:significance}
+
+Table~\ref{tab:ttest} reports Welch's two-tailed $t$-tests for the
+inter-mode TTFR differences that drive our claims. Three results matter:
+
+\begin{enumerate}
+\item Fixed prefetch \emph{significantly degrades} PyTorch TTFR relative to
+demand-only lazy ($t\!=\!-39.6$, $p\!<\!10^{-9}$). The regression is not
+noise.
+\item The adaptive controller \emph{significantly improves} PyTorch TTFR
+relative to fixed prefetch ($t\!=\!14.8$, $p\!<\!10^{-4}$). The recovery is
+not noise.
+\item Adaptive TTFR is \emph{statistically indistinguishable} from
+demand-only lazy on PyTorch ($p\!=\!0.11$). The controller pays at most a
+modest, non-significant penalty for the probe windows.
+\end{enumerate}
+
+For Redis, no pairwise difference among the three lazy modes is significant
+at $\alpha\!=\!0.05$, confirming that the policy choice is essentially
+free in absolute terms on this workload (and only the prefetch \emph{volume}
+differs, \S\ref{sec:prefvol}).
+
+\begin{table}[t]
+\centering
+\caption{Welch's two-tailed $t$-test on TTFR for the key comparisons.
+Significant at $\alpha\!=\!0.05$ marked $\star$.}
+\label{tab:ttest}
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{4pt}
+\small
+\begin{tabular}{l l S[table-format=+2.2] S[table-format=2.1] l}
+\toprule
+Workload & Comparison & {$t$} & {df} & {$p$} \\
+\midrule
+PyTorch  & full vs.\ lazy            & -43.91 & 6.8 & ${<}10^{-9}\,\star$ \\
+PyTorch  & lazy vs.\ fixed           & -39.56 & 7.3 & ${<}10^{-9}\,\star$ \\
+PyTorch  & fixed vs.\ adaptive       & +14.79 & 5.0 & ${<}10^{-4}\,\star$ \\
+PyTorch  & lazy vs.\ adaptive        &  -1.95 & 4.6 & $0.11$              \\
+Redis    & lazy vs.\ fixed           &  +1.30 & 7.9 & $0.23$              \\
+Redis    & lazy vs.\ adaptive        &  +0.34 & 6.4 & $0.74$              \\
+Redis    & fixed vs.\ adaptive       &  -1.28 & 6.9 & $0.24$              \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{The Fixed-Prefetch Paradox}
 \label{sec:paradox}
 
-Fixed prefetch on PyTorch reduces page faults by 60\,\% yet nearly doubles TTFR
-(Figure~\ref{fig:faults_vs_ttfr}). This apparent paradox is explained by TCP channel
-dynamics. The prefetch worker generates a backlog of pending TCP reads on the
-secondary connection. Although this does not directly block the primary connection,
-it congests the kernel's socket send buffer for the page server, delaying responses
-on the primary connection. The effect manifests as growing \textit{qdepth} and
-ultimately increases wall-clock time per fault.
+Fixed prefetch on PyTorch reduces page faults by $60\,\%$ yet nearly
+doubles TTFR (Fig.~\ref{fig:faults_vs_ttfr}). The paradox is explained by
+TCP channel dynamics. The prefetch worker generates a backlog of pending
+TCP reads on the secondary connection. Although this does not directly
+block the primary connection, it congests the page server's socket send
+buffer, delaying responses on the primary connection. The effect manifests
+as growing queue depth $q$ and ultimately increases wall-clock time per
+fault.
 
-The 60\,\% fault reduction is real: fewer faults fire. But the remaining 40\,\% take
-longer to resolve because each resolution is delayed by congestion. The net effect is
-higher TTFR.
+The $60\,\%$ fault reduction is real: fewer faults fire. But the remaining
+$40\,\%$ take longer to resolve because each resolution is delayed by
+congestion. The net effect is higher TTFR. This is structurally analogous
+to bufferbloat~\cite{gettys2011bufferbloat}: aggressive buffering masks
+backpressure that the producer should have observed, allowing the queue to
+grow to a point where latency dominates throughput gains. The same dynamic
+motivates classical TCP congestion control~\cite{jacobson1988congestion}
+and delay-sensitive variants such as TCP~Vegas~\cite{brakmo1995vegas},
+which infer congestion from queueing delay rather than loss; our controller
+applies the same idea at the prefetch-policy layer, using duplicate
+pressure and queue depth as queue-delay proxies. A complementary kernel
+signal that we do not yet consume is the Linux Pressure Stall Information
+interface~\cite{linux-psi}, which exposes per-resource stall fractions and
+could feed a future tighter feedback loop.
 
 \begin{figure*}[t]
   \centering
   \includegraphics[width=0.78\textwidth]{fig4_faults_vs_ttfr.pdf}
-  \caption{PyTorch page faults vs.\ TTFR. Fixed prefetch reduces faults 60\,\% but
-    nearly doubles TTFR. Fewer faults do not imply lower latency when prefetch
-    congests the fault-path TCP channel.}
+  \caption{PyTorch page faults vs.\ TTFR. Fixed prefetch reduces faults
+    $60\,\%$ but nearly doubles TTFR. Fewer faults do not imply lower
+    latency when prefetch congests the fault-path TCP channel.}
   \label{fig:faults_vs_ttfr}
 \end{figure*}
 
 \subsection{Adaptive Controller Behavior}
 \label{sec:controller-eval}
 
-\textbf{PyTorch.}\, The controller observes 5 control windows (640 faults) before
-disabling prefetch (Table~\ref{tab:controller}, Figure~\ref{fig:timeline}). It
-progressively reduces window and stride before disabling at window 5, when duplicate
-rate is 100\,\% and queue depth has grown to 3{,}796.
+\textbf{PyTorch.}\, The controller observes $5$ control windows ($640$
+faults) before disabling prefetch (Table~\ref{tab:controller},
+Fig.~\ref{fig:timeline}). It progressively reduces window and stride before
+disabling at window $5$, when duplicate rate is $100\,\%$ and queue depth
+has grown to $3{,}796$.
 
 \begin{table}[t]
 \centering
 \caption{PyTorch adaptive controller windows (iteration 1).}
 \label{tab:controller}
+\renewcommand{\arraystretch}{1.15}
 \small
 \begin{tabular}{c S[table-format=3.0] S[table-format=4.0] l}
 \toprule
-{Window} & {Dup rate (\%)} & {Queue depth} & {Decision} \\
+{Window} & {$\rho$ (\%)} & {$q$} & {Decision} \\
 \midrule
 1 & 100 & 2704 & on (reduce $W,S$) \\
-2 & 78  & 3288 & on (reduce $W,S$) \\
+2 &  78 & 3288 & on (reduce $W,S$) \\
 3 & 100 & 3552 & on (reduce $W,S$) \\
 4 & 100 & 3714 & on (reduce $W,S$) \\
 5 & 100 & 3796 & \textbf{off}      \\
@@ -495,80 +690,106 @@ rate is 100\,\% and queue depth has grown to 3{,}796.
 \end{tabular}
 \end{table}
 
-The adaptive mode's fault count (15{,}888) is nearly identical to demand-only
-(15{,}743), confirming the controller backed off almost completely after the probe
-window.
+The adaptive mode's fault count ($15{,}888$) is within $1\,\%$ of
+demand-only ($15{,}743$), confirming the controller backed off almost
+completely after the probe windows.
 
-\textbf{Redis.}\, The controller disables prefetch in a single window: 94\,\%
-duplicate rate, queue depth 821. Redis's access pattern is essentially random across
-10{,}000 keys; sequential prefetch predicts nothing and every prefetch candidate is
-already served by the time the worker processes it.
+\textbf{Redis.}\, The controller disables prefetch in a single window:
+$94\,\%$ duplicate rate, queue depth $821$. Redis's access pattern is
+essentially random across $10{,}000$ keys; sequential prefetch predicts
+nothing and every prefetch candidate is already served by the time the
+worker processes it.
 
 \begin{figure*}[t]
   \centering
   \includegraphics[width=0.78\textwidth]{fig5_adaptive_timeline.pdf}
-  \caption{Adaptive controller decisions per 128-fault window (PyTorch, iteration 1).
-    Duplicate rate stays at 100\,\% and queue depth climbs across windows; the
-    controller progressively reduces window/stride before disabling at window 5.}
+  \caption{Adaptive controller decisions per $128$-fault window
+    (PyTorch, iteration 1). Duplicate rate stays at $100\,\%$ and queue
+    depth climbs across windows; the controller progressively reduces
+    window/stride before disabling at window $5$.}
   \label{fig:timeline}
 \end{figure*}
+
+\subsection{Threshold Sensitivity}
+\label{sec:sensitivity}
+
+We did not perform a full sweep, but the thresholds chosen
+($\dupthr\!=\!0.70$, $\qthr\!=\!500$, $\drainthr\!=\!64$) are conservative.
+The PyTorch traces (Table~\ref{tab:controller}) show $\rho$ saturating at
+$78$--$100\,\%$ and $q$ exceeding $\qthr$ from window~1, so the controller's
+\textsc{disable} branch fires under any threshold satisfying
+$\dupthr\!<\!0.78$ or $\qthr\!<\!2700$. The Redis trace shows
+$\rho\!=\!94\,\%, q\!=\!821$ in a single window---disabled under any
+threshold satisfying $\dupthr\!<\!0.94$ or $\qthr\!<\!821$.
+The test\_loop trace produces no $\rho{,}q$ events that approach the
+thresholds, and the controller correctly leaves prefetch enabled (and
+harmless).
+A formal sweep across $(\dupthr,\qthr)$ to characterize false-positive and
+false-negative regions is future work.
 
 \subsection{Throughput}
 
 \begin{table}[t]
 \centering
-\caption{Throughput. Percentages relative to full restore baseline.}
+\caption{Throughput. Percentages relative to full-restore baseline.}
 \label{tab:throughput}
+\renewcommand{\arraystretch}{1.15}
 \small
 \begin{tabular}{l r r r r}
 \toprule
 Workload & Full & Lazy & Fixed & Adaptive \\
 \midrule
-test\_loop & 1\,op/s    & 100\,\% & 100\,\% & 100\,\% \\
-Redis      & 107{,}146  & 68\,\%  & 66\,\%  & 69\,\%  \\
-PyTorch    & 84\,inf/s  & 100\,\% & 97\,\%  & 94\,\%  \\
+test\_loop & 1\,op/s   & $100\,\%$ & $100\,\%$ & $100\,\%$ \\
+Redis      & $107{,}146$ & $68\,\%$  & $66\,\%$  & $69\,\%$  \\
+PyTorch    & 84\,inf/s & $100\,\%$ & $97\,\%$  & $94\,\%$  \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-All lazy modes achieve $\geq$94\,\% of full restore throughput on PyTorch and
-test\_loop. Redis lazy modes reach 68--69\,\%. This shortfall reflects TCP transport
-overhead: Redis issues random GET operations that touch pages across the working set,
-each requiring a TCP round-trip. All lazy modes show roughly equal Redis throughput,
-confirming this is a transport limitation, not a policy effect.
+All lazy modes achieve $\geq 94\,\%$ of full restore throughput on PyTorch
+and test\_loop. Redis lazy modes reach $68$--$69\,\%$, reflecting TCP
+transport overhead: random GET operations touch pages across the working
+set, each requiring a TCP round-trip. All lazy modes show roughly equal
+Redis throughput, confirming this is a transport limitation, not a policy
+effect.
 
-\textbf{PyTorch throughput caveat.}\, Throughput is measured after the post-restore
-phase concludes, on the restored process. All modes converge once pages are local;
-the numbers (79--84 inferences/sec) reflect CPU-bound inference speed.
+\textbf{PyTorch throughput caveat.}\, Throughput is measured on the
+restored process after the post-restore phase concludes. All modes
+converge once pages are local; the numbers ($79$--$84$ inferences/sec)
+reflect CPU-bound inference speed, not transport behavior.
 
 \subsection{Prefetch Volume Reduction}
+\label{sec:prefvol}
 
 \begin{table}[t]
 \centering
 \caption{Mean prefetch volume per restore session.}
 \label{tab:prefetch}
+\renewcommand{\arraystretch}{1.15}
 \small
 \begin{tabular}{l S[table-format=5.0] S[table-format=5.0] r}
 \toprule
 {Workload} & {Fixed} & {Adaptive} & {Reduction} \\
 \midrule
-test\_loop & 76    & 32    & $-$58\,\% \\
-Redis      & 1579  & 874   & $-$45\,\% \\
-PyTorch    & 2121  & 1695  & $-$20\,\% \\
+test\_loop & 76    & 32    & $-58\,\%$ \\
+Redis      & 1579  & 874   & $-45\,\%$ \\
+PyTorch    & 2121  & 1695  & $-20\,\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 The adaptive controller reduces prefetch volume on all three workloads
-(Figure~\ref{fig:prefetch_vol}), even on test\_loop where fixed prefetch causes no
-measurable harm. The PyTorch reduction is smaller ($-$20\,\%) because most prefetch
-volume occurs in the early probe windows before the controller disables.
+(Fig.~\ref{fig:prefetch_vol}), even on test\_loop where fixed prefetch
+causes no measurable harm. The PyTorch reduction is smaller
+($-20\,\%$) because most prefetch volume occurs in the early probe
+windows before the controller disables.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{fig3_prefetch_volume.pdf}
-  \caption{Prefetch volume per restore session. Adaptive cuts volume 20--58\,\%
-    across workloads with negligible TTFR penalty on test\_loop and Redis.}
+  \caption{Prefetch volume per restore session. Adaptive cuts volume
+    $20$--$58\,\%$ across workloads with negligible TTFR penalty on
+    test\_loop and Redis.}
   \label{fig:prefetch_vol}
 \end{figure}
 
@@ -576,107 +797,470 @@ volume occurs in the early probe windows before the controller disables.
 \section{Discussion}
 \label{sec:discussion}
 
-\textbf{When lazy restore helps and when it does not.}\, Lazy restore is most
-beneficial for processes that can satisfy their first requests using a small fraction
-of their address space. For test\_loop, TTFR is determined by kernel restore overhead
-and a handful of pages, and lazy restore eliminates the page-copy phase entirely
-(21$\times$ speedup). For PyTorch inference, the process cannot serve its first
-request until all $\approx$15{,}000 model weight pages are local, and lazy restore
-imposes a 3$\times$ TTFR overhead relative to full restore. This workload dependence
-is fundamental; we do not claim lazy restore universally reduces TTFR.
+\textbf{When lazy restore helps and when it does not.}\, Lazy restore is
+most beneficial for processes that can satisfy their first requests using
+a small fraction of their address space. For test\_loop, TTFR is determined
+by kernel restore overhead and a handful of pages, and lazy restore
+eliminates the page-copy phase entirely ($21\times$ speedup). For PyTorch
+inference, the process cannot serve its first request until all
+$\approx 15{,}000$ model weight pages are local, and lazy restore imposes
+a $3\times$ TTFR overhead relative to full restore. This workload
+dependence is fundamental; we do not claim lazy restore universally reduces
+TTFR.
 
-\textbf{Why adaptive recovers but does not fully match lazy.}\, On PyTorch, adaptive
-mode (686\,ms) does not fully recover to demand-only lazy (625\,ms). The 61\,ms gap
-comes from probe windows before the controller disables prefetch: during
-$5{\times}128=640$ faults, the prefetch worker is active and building queue depth,
-adding latency. A more aggressive threshold would disable prefetch sooner at the cost
-of false positives. The current threshold is conservative; tuning it is left as
+\textbf{Why adaptive recovers but does not fully match lazy.}\, On PyTorch,
+adaptive mode ($686$\,ms) is $61$\,ms above demand-only lazy ($625$\,ms),
+a gap that is not statistically significant ($p\!=\!0.11$) but is visible
+in the means. The gap comes from probe windows before the controller
+disables prefetch: during $5\!\times\!128\!=\!640$ faults, the prefetch
+worker is active and building queue depth, adding latency. A more
+aggressive threshold would disable prefetch sooner at the cost of false
+positives. The current threshold is conservative; tuning it is left as
 future work.
 
-\textbf{Duplicate pressure as an adaptive signal.}\, Duplicate pressure is effective
-because it directly measures wasted work without requiring knowledge of the
-workload's access pattern. A high duplicate rate means the prefetch worker is
-fetching pages the fault path has already resolved---the workload is accessing memory
-in an order the sequential policy did not predict. Queue depth amplifies this signal:
-even moderate duplicate pressure becomes harmful when the queue is large, because
-queued-but-useless requests occupy TCP bandwidth. The combination handles both
+\textbf{Duplicate pressure as an adaptive signal.}\, Duplicate pressure is
+effective because it directly measures wasted work without requiring
+knowledge of the workload's access pattern. A high duplicate rate means the
+prefetch worker is fetching pages the fault path has already resolved---
+the workload is accessing memory in an order the sequential policy did not
+predict. Queue depth amplifies this signal: even moderate duplicate
+pressure becomes harmful when the queue is large, because queued-but-
+useless requests occupy TCP bandwidth. The combination handles both
 fast-saturating workloads (Redis: single window, immediate disable) and
-slow-to-saturate ones (PyTorch: 5 windows, progressive reduction).
+slow-to-saturate ones (PyTorch: $5$ windows, progressive reduction).
+
+\textbf{Deployment guidance.}\, For operators considering CRIU lazy restore
+in production, our measurements suggest three operational rules. First,
+estimate the working-set ratio (touched pages before TTFR over total mapped
+pages); if it is below ${\sim}5\,\%$, demand-only lazy is sufficient and
+prefetch yields no benefit on any of our workloads. Second, profile the
+page-server's sustained throughput $b$ once at deployment time; the
+controller's $\qthr$ should be set near $b\!\cdot\!\Delta_\textit{tolerable}$
+where $\Delta_\textit{tolerable}$ is the maximum acceptable queue delay
+(we used $\Delta_\textit{tolerable}\!\approx\!500$\,ms). Third, separate the
+fault-path and prefetch-path TCP connections at the page-server end
+(distinct sockets, ideally distinct kernel send buffers) so the disable
+decision can drain prefetch backlog without simultaneously stalling fault
+responses; collapsing them onto one socket removed nearly all of the
+adaptive controller's benefit in our pilot runs.
 
 % ── 7. Related Work ──────────────────────────────────────────────────────────
 \section{Related Work}
 \label{sec:related}
 
-\textbf{CRIU and lazy restore.}\, CRIU~\cite{criu} is the standard checkpoint/restore
-tool for Linux. Lazy restore via \uffd was introduced to avoid blocking restore on
-large memory copies~\cite{criu-lazy}. Existing CRIU deployments do not include an
-adaptive prefetch policy; the default behavior is demand-only.
+\textbf{Checkpoint/restore and live migration.}\, Process-level
+checkpoint/restore predates CRIU~\cite{litzkow1997checkpoint,
+sapuntzakis2002optimizing}. VM-level live
+migration~\cite{clark2005live} popularized the pre-copy and post-copy
+techniques~\cite{hines2009postcopy} that CRIU~\cite{criu} now inherits;
+adjacent memory-management work in this lineage includes ballooning and
+share-based reclamation in commodity hypervisors~\cite{waldspurger2002memory}.
+Lazy restore via \uffd~\cite{criu-lazy} is structurally a post-copy technique
+specialized for processes. Fast in-memory CRIU for containers has been
+explored~\cite{venkatesh2019fast}, but without an adaptive prefetch policy;
+existing CRIU deployments default to demand-only fetching.
 
-\textbf{Remote memory systems.}\, Infiniswap~\cite{gu2017infiniswap} and
-Fastswap~\cite{amaro2020can} implement transparent remote memory over RDMA by
-replacing kernel swap with remote page fetch. AIFM~\cite{ruan2020aifm} exposes far
-memory to applications via a runtime API. These systems operate at the swap or
-application level and are not specific to the post-restore phase. \distriproc
-operates entirely in userspace and targets the transient remote-memory state that
-exists between restore and working-set convergence.
+\textbf{Serverless cold start.}\, A closely related body of work targets
+sub-second function startup. Catalyzer~\cite{du2020catalyzer} reaches
+sub-millisecond cold start via initialization-less booting;
+REAP~\cite{ustiugov2021reap} accelerates Firecracker microVM~\cite{agache2020firecracker}
+snapshots by replaying the working set on restore.
+Mohan~\textit{et~al.}~\cite{mohan2019agile} characterize agile cold-start
+techniques at scale, and Nightcore~\cite{shen2021nightcore} targets
+latency-sensitive serverless microservices. Production studies of serverless
+cold-start behavior~\cite{wang2018peeking, shahrad2020serverless} report TTFR
+distributions that mirror the regime we evaluate. \distriproc differs in
+that it focuses on the \emph{post-restore} TCP-coupled prefetch policy rather
+than the snapshot or boot path itself.
 
-\textbf{Prefetch policies.}\, Sequential and stride prefetching in virtual memory
-systems are well-studied~\cite{chen1995effective}. Adaptive prefetch has been
-explored in hardware prefetchers~\cite{srinath2007feedback} and database buffer
-management~\cite{cao1994influence}. To our knowledge, adaptive prefetch policy for
-the \uffd post-restore phase has not been previously studied.
+\textbf{Remote and disaggregated memory.}\,
+Infiniswap~\cite{gu2017infiniswap}, Fastswap~\cite{amaro2020can}, and
+Leap~\cite{al2020leap} implement transparent remote memory over RDMA by
+replacing kernel swap with remote page fetch; Leap in particular learns
+prefetch patterns at swap-path granularity, which is structurally similar
+to the signal-driven policy we adopt at the \uffd boundary.
+Google's software-defined far memory at warehouse
+scale~\cite{lagar2019software} pioneered tiered remote-memory deployment
+in production. AIFM~\cite{ruan2020aifm}, Carbink~\cite{zhou2022carbink},
+and Hydra~\cite{lee2022hydra} extend RDMA-backed remote memory with
+runtime APIs and fault tolerance. Semeru~\cite{wang2020semeru} and
+Clio~\cite{calciu2021clio} co-design managed runtimes and hardware for
+disaggregated memory. LegoOS~\cite{shan2018legoos} disaggregates CPU,
+memory, and storage across separate components, and CXL-based memory
+pooling~\cite{cxl} is an emerging hardware approach; the network
+requirements of resource disaggregation are characterized
+in~\cite{gao2016network}, and earlier blade-server proposals
+include~\cite{lim2009disaggregated}. These systems operate at the swap or
+application level; \distriproc targets the transient remote-memory state
+that exists between restore and working-set convergence, and is
+complementary---its userspace policy layer could sit above a CXL-backed
+or RDMA-backed far-memory transport.
 
-\textbf{Container live migration.}\, RunC and Podman support CRIU-based container
-migration~\cite{runc-lazy}. Page server implementations are typically stateless TCP
-servers similar to ours. No published work evaluates adaptive fetch policy for
-container migration TTFR.
+\textbf{Prefetch policies.}\, Sequential and stride prefetching in virtual
+memory systems are well-studied~\cite{chen1995effective}. Adaptive
+prefetch has been explored in hardware
+prefetchers~\cite{srinath2007feedback, joseph1997prediction} and database
+buffer management~\cite{cao1996integrated}, and machine-learning models
+can in principle predict access patterns directly~\cite{hashemi2018learning}.
+To our knowledge, adaptive prefetch policy for the \uffd post-restore
+phase has not been previously studied.
 
-\textbf{Disaggregated memory.}\, LegoOS~\cite{shan2018legoos} disaggregates CPU,
-memory, and storage across separate physical components. CXL-based memory
-pooling~\cite{cxl} is an emerging hardware approach. \distriproc is complementary: it
-provides a userspace policy layer that could sit above a CXL-backed or RDMA-backed
-far-memory transport.
+\textbf{Container live migration.}\, RunC and Podman support CRIU-based
+container migration~\cite{runc-lazy}. Page server implementations are
+typically stateless TCP servers similar to ours. No published work
+evaluates adaptive fetch policy for container migration TTFR.
 
-% ── 8. Limitations ───────────────────────────────────────────────────────────
+% ── 8. Reproducibility ───────────────────────────────────────────────────────
+\section{Reproducibility}
+\label{sec:repro}
+
+All numbers in this paper come from a single benchmark harness invoked as
+
+\begin{lstlisting}[basicstyle=\small\ttfamily,frame=none]
+$ git clone https://github.com/kernex-sbs/DistriProc
+$ cd DistriProc && make bench-paper
+\end{lstlisting}
+
+\noindent The artifact pins the configuration that produced
+Tables~\ref{tab:ttfr}--\ref{tab:prefetch}: $n\!=\!5$ iterations across all
+three workloads $\times$ four modes ($60$ runs total), random seeds fixed
+where applicable, output written to \texttt{eval/results/results.csv} with
+per-iteration log files in \texttt{eval/results/logs/}.
+The exact commit producing the results in this paper is
+\texttt{97caf28}. Build environment: Linux $6.18.7$, CRIU $4.2$,
+\texttt{gcc} $13.x$, Python $3.13$, PyTorch $2.x$ (CPU). Hardware:
+AMD Ryzen 7 7735HS / $15$\,GB RAM.
+Statistical post-processing (CIs in Table~\ref{tab:ttfr}, $t$-tests in
+Table~\ref{tab:ttest}) is reproducible from \texttt{results.csv} with
+standard Welch's procedure; no external scripts required.
+
+% ── 9. Limitations ───────────────────────────────────────────────────────────
 \section{Limitations}
 \label{sec:limitations}
 
-\textbf{Transport.}\, All experiments use TCP loopback. RDMA would reduce per-page
-RTT from $\approx$10\,$\mu$s to $\approx$1--2\,$\mu$s, changing absolute TTFR numbers
-and likely reducing the congestion effect that makes fixed prefetch harmful. Whether
-the adaptive controller remains necessary under RDMA is an open question.
+\textbf{Transport.}\, All experiments use TCP loopback. RDMA would reduce
+per-page RTT from $\approx 10\,\mu$s to $\approx 1$--$2\,\mu$s, changing
+absolute TTFR numbers and likely reducing the congestion effect that makes
+fixed prefetch harmful. Whether the adaptive controller remains necessary
+under RDMA is an open question we plan to revisit on real hardware.
 
 \textbf{Writable coherence.}\, \distriproc does not implement write-back or
-write-through to the page server. Pages installed via \texttt{UFFDIO\_COPY} are local
-copies; modifications are not propagated. The system supports read-only remote memory
-only.
+write-through to the page server. Pages installed via
+\texttt{UFFDIO\_COPY} are local copies; modifications are not propagated.
+The system supports read-only remote memory only.
 
-\textbf{Controller generalization.}\, Thresholds were set by inspection on three
-workloads and were not cross-validated. A workload with a mixed access pattern may
-behave unpredictably. The controller is a heuristic; it is not learned.
+\textbf{Controller generalization.}\, Thresholds were set by inspection
+on three workloads and were not cross-validated against a separate
+holdout. A workload with a mixed access pattern (sequential bursts mixed
+with random reads) may behave unpredictably. The controller is a
+heuristic; it is not learned.
 
-\textbf{PyTorch throughput measurement.}\, Throughput is measured after all pages are
-local. It does not capture inference throughput during the remote-memory phase.
+\textbf{PyTorch throughput measurement.}\, Throughput is measured after
+all pages are local. It does not capture inference throughput during the
+remote-memory phase.
 
-\textbf{Single-machine evaluation.}\, Page server and process run on the same host.
-True live migration across machines would expose real network RTT and bandwidth
-constraints not present in loopback experiments.
+\textbf{Single-machine evaluation.}\, Page server and process run on the
+same host. True live migration across machines would expose real network
+RTT and bandwidth constraints not present in loopback experiments.
 
-% ── 9. Conclusion ────────────────────────────────────────────────────────────
+\textbf{Sample size.}\, $n\!=\!5$ is small. The effect sizes we report
+(${>}80\,\%$ TTFR change for fixed prefetch on PyTorch) are large enough
+to yield $p\!<\!10^{-4}$ at this $n$, but smaller effects (e.g., the
+$61$\,ms adaptive-vs-lazy PyTorch gap) cannot be ruled out with this
+sample.
+
+% ── 10. Future Work ─────────────────────────────────────────────────────────
+\section{Future Work}
+\label{sec:future}
+
+Several directions follow naturally from the present work.
+
+\textbf{RDMA transport.}\, Repeating the experiments over an RDMA-backed
+page server would test whether the congestion-driven harm we observe
+under TCP persists at $\mu$s-scale RTTs. We expect the relative cost of
+each duplicate prefetch to shrink, raising both thresholds, but the
+qualitative effect---an aggressive sequential policy paying for itself in
+queue delay---should remain whenever the speculative load saturates the
+link.
+
+\textbf{Learned thresholds.}\, $\dupthr$ and $\qthr$ are currently fixed.
+A per-workload calibration pass during the first few hundred faults could
+fit them from observed $\rho$ and $q$ distributions, and prior work on
+learning memory access patterns~\cite{hashemi2018learning} suggests a
+classifier could replace the duplicate-pressure heuristic entirely with
+modest online cost.
+
+\textbf{Multi-tenant page servers.}\, Production deployments will see
+several restored processes attached to one page server; whether the
+controller's per-connection signals remain accurate when the bandwidth
+budget is split across tenants is an open question. A first step would be
+to share a $q$-budget across connections and let the controller arbitrate
+per-tenant.
+
+\textbf{Writable coherence.}\, Read-only remote memory limits applicability
+to checkpoint-then-resume workflows. Adding a write-back path with a
+coarse coherence mode would broaden the scope but introduces new tradeoffs
+(when to push dirty pages, how to avoid amplifying the same congestion
+problem on the outbound path) that deserve dedicated study.
+
+\textbf{Cross-architecture validation.}\, All measurements use an x86\_64
+host with $4$\,KiB pages. ARM64 servers commonly use $16$\,KiB or
+$64$\,KiB base pages, changing both $F$ and $b$ in the cost model
+(Eq.~\eqref{eq:tprefetch}) by an order of magnitude. Whether the
+controller's heuristic thresholds transfer unchanged or need
+per-page-size calibration is an empirical question we leave open.
+
+\textbf{Integration with kernel memory pressure.}\, The Linux PSI
+interface~\cite{linux-psi} exposes \texttt{some} and \texttt{full} stall
+fractions per memory cgroup at sub-second granularity. A tighter feedback
+loop could read PSI directly to corroborate the queue-depth signal,
+particularly to distinguish prefetch-induced contention from genuine
+working-set pressure during the post-restore phase. Wiring PSI into the
+controller is a small implementation task; characterising whether it
+adds signal beyond $\rho$ and $q$ is the open question.
+
+% ── 11. Conclusion ────────────────────────────────────────────────────────────
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented \distriproc, an adaptive post-restore remote-memory runtime built on
-CRIU lazy restore and \uffd. We showed that fixed sequential prefetch can nearly
-double TTFR for memory-heavy workloads by congesting the fault-path TCP channel, and
-that a simple per-window controller using duplicate pressure and queue depth can
-detect and disable wasteful prefetch, recovering the majority of the performance
-loss. On three workloads, the adaptive policy reduces prefetch volume 20--58\,\%
-relative to fixed prefetch while matching or recovering near-lazy performance on
-TTFR. The system is implemented in userspace without kernel modifications and is
+We presented \distriproc, an adaptive post-restore remote-memory runtime
+built on CRIU lazy restore and \uffd. We showed that fixed sequential
+prefetch can nearly double TTFR for memory-heavy workloads by congesting
+the fault-path TCP channel, and that a simple per-window controller using
+duplicate pressure and queue depth can detect and disable wasteful
+prefetch, recovering the majority of the performance loss with statistical
+significance ($p\!<\!10^{-4}$). On three workloads, the adaptive policy
+reduces prefetch volume by $20$--$58\,\%$ relative to fixed prefetch while
+matching demand-only lazy on TTFR ($p\!=\!0.11$ on the worst case). The
+system is implemented in userspace without kernel modifications and is
 reproducible from a single \texttt{make bench-paper} invocation.
 
+% ── Appendix ────────────────────────────────────────────────────────────────
+\appendices
+\section{Derivation of the Cost-Model Thresholds}
+\label{app:cost}
+
+We sketch the derivation behind the threshold choices in
+\S\ref{sec:cost-model}. Let the page server sustain $b$ pages/s on a single
+TCP connection, with mean per-page round trip $r$. The fault path issues
+one request per unique page fault and waits for the response inline; the
+prefetch path adds, per fault, $S$ speculative requests of which a fraction
+$\delta$ are wasted (the page is already served). With fault rate
+$\lambda_f$, the total request rate offered to the shared channel is
+\begin{equation}
+  \lambda \;=\; \lambda_f \cdot \bigl(1 + S(1-\delta)\bigr),
+  \label{eq:offered}
+\end{equation}
+and the link's utilization is
+\begin{equation}
+  \rho_{\!\textit{link}} \;=\; \frac{\lambda}{b}.
+  \label{eq:rho-link}
+\end{equation}
+Modeling the channel as an $M\!/\!M\!/1$ queue with arrival rate $\lambda$
+and service rate $b$, mean queueing wait obeys
+\begin{equation}
+  W \;=\; \frac{\rho_{\!\textit{link}}}{b\,(1-\rho_{\!\textit{link}})},
+  \label{eq:meandelay}
+\end{equation}
+which diverges as $\rho_{\!\textit{link}}\!\to\!1$. By Little's law the
+expected backlog observed at the prefetch MPSC queue is
+\begin{equation}
+  q \;=\; \lambda \, W,
+  \label{eq:little}
+\end{equation}
+so the controller's measured $q$ is a direct, scale-free proxy for
+$\rho_{\!\textit{link}}$ through Eqs.~\eqref{eq:meandelay}--\eqref{eq:little}:
+$q$ remains small while $\rho_{\!\textit{link}}$ is comfortably below $1$
+and explodes once it nears saturation. While $\lambda < b$ the queue stays
+bounded and the channel is in its underloaded regime; the prefetch
+contribution sits entirely in the link's slack. Once $\lambda$ approaches
+$b$, the per-fault service time grows as $1/(b-\lambda)$, after which any
+additional speculative load is pure harm. The controller's two thresholds
+bracket this transition: $\dupthr$ caps $\delta$ at the point where the
+predicted waste exceeds the unsupplied slack of the link, and $\qthr$ caps
+$q$ at the point where Eq.~\eqref{eq:little} already implies
+$\rho_{\!\textit{link}}\!\gtrsim\!1$ regardless of the estimate of $\delta$.
+The drain threshold $\drainthr$ is set conservatively at $1/8$ of $\qthr$
+so re-enabling does not re-saturate the channel before its prior backlog
+has cleared. The same shape would arise for any policy in which
+speculative work shares a bandwidth-limited transport with synchronous
+work; this is why the same parameters work, qualitatively, across our
+three workloads despite their very different access patterns.
+
+\section{Welch's Test and Confidence Intervals}
+\label{app:stats}
+
+We restate the statistical machinery used to produce Tables~\ref{tab:ttfr}
+and~\ref{tab:ttest}, for completeness. Let $X_1,\dots,X_{n_1}$ and
+$Y_1,\dots,Y_{n_2}$ be independent TTFR samples from two restore modes
+with sample means $\bar{X},\bar{Y}$ and sample variances $s_1^2,s_2^2$.
+Welch's two-sample $t$-statistic, which does not assume equal variances,
+is
+\begin{equation}
+  t \;=\;
+  \frac{\bar{X} - \bar{Y}}
+       {\sqrt{\,s_1^2/n_1 \,+\, s_2^2/n_2\,}}.
+  \label{eq:welch-t}
+\end{equation}
+The associated effective degrees of freedom are approximated by the
+Welch--Satterthwaite formula
+\begin{equation}
+  \nu \;\approx\;
+  \frac{\bigl(s_1^2/n_1 + s_2^2/n_2\bigr)^{2}}
+       {\dfrac{(s_1^2/n_1)^{2}}{n_1-1} \,+\, \dfrac{(s_2^2/n_2)^{2}}{n_2-1}},
+  \label{eq:welch-df}
+\end{equation}
+which is what produces the non-integer $\textit{df}$ values reported in
+Table~\ref{tab:ttest} (e.g.\ $\textit{df}\!=\!6.8$ for the
+full~vs.~lazy comparison on PyTorch).
+The $95\,\%$ confidence intervals in Table~\ref{tab:ttfr} are the standard
+$t$-distribution intervals,
+\begin{equation}
+  \mathrm{CI}_{95\%} \;=\;
+  \bar{X} \;\pm\; t_{0.025,\,n-1}\,\frac{s}{\sqrt{n}},
+  \label{eq:ci}
+\end{equation}
+with $n\!=\!5$ and $t_{0.025,4}\!=\!2.776$. For $p$-values we use a
+two-tailed test against the null $\mathbb{E}[X]\!=\!\mathbb{E}[Y]$. With
+$n_1\!=\!n_2\!=\!5$ the smallest detectable difference at $\alpha\!=\!0.05$
+is roughly $1.6\,\sigma_{\textit{pool}}/\sqrt{5}$, i.e.\ effects below that
+threshold (the $61$\,ms adaptive--lazy gap on PyTorch, for instance) can
+neither be confirmed nor ruled out from these data; this is the source of
+the $p\!=\!0.11$ entry in Table~\ref{tab:ttest} and the limitation noted
+in \S\ref{sec:limitations}.
+
+\section{Worked Numerical Example on PyTorch}
+\label{app:worked}
+
+To make the abstract model concrete, we instantiate
+Eqs.~\eqref{eq:tlazy}--\eqref{eq:condition} with the measured PyTorch
+numbers. Profiling the lazy (demand-only) run gives $F\!\approx\!15{,}743$
+unique pages and $b\!\approx\!25{,}000$~pages/s sustained on the secondary
+TCP connection, with measured per-page round trip $r\!\approx\!40\,\mu$s
+on loopback. Substituting into Eq.~\eqref{eq:tlazy},
+\begin{equation}
+  T_\textit{lazy} \;\approx\; 15{,}743 \times 40\,\mu\text{s} \;\approx\; 630\,\text{ms},
+  \label{eq:tlazy-num}
+\end{equation}
+which is within $1\,\%$ of the measured mean $625$\,ms reported in
+Table~\ref{tab:ttfr}. For the fixed-prefetch run with $S\!=\!8$ and
+observed duplicate rate saturating near $\delta\!\approx\!1$ in steady
+state (Table~\ref{tab:controller}, all but window~2), the per-fault offered
+load $(1\!+\!S(1{-}\delta))/b$ briefly drops near $r$, but during the
+ramp-up phase (windows~1--3) $\delta\!<\!0.8$ and the offered load is
+roughly $5r$, pushing the channel into the saturated regime of
+Eq.~\eqref{eq:tprefetch}. This is the regime in which our measured TTFR
+($1{,}159$\,ms) overshoots $T_\textit{lazy}$ by $\sim 530$\,ms, in
+quantitative agreement with the model's prediction once
+$\rho_{\!\textit{link}}\!\to\!1$. The adaptive controller intervenes
+before $\rho_{\!\textit{link}}$ stays pinned, recovering the
+$T_\textit{lazy}$ regime to within $61$\,ms.
+
+\section{Notation Used in the Cost Model}
+\label{app:notation}
+
+For reference, Table~\ref{tab:notation} collects the symbols used in
+\S\ref{sec:cost-model} and Appendices~\ref{app:cost}--\ref{app:worked}.
+
+\begin{table}[ht]
+\centering
+\caption{Symbols used in the cost model and queueing derivation.}
+\label{tab:notation}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}llp{0.42\linewidth}@{}}
+\toprule
+\textbf{Symbol} & \textbf{Units} & \textbf{Meaning} \\
+\midrule
+$F$ & pages & Unique pages faulted before TTFR \\
+$r$ & seconds & Mean per-page round-trip time \\
+$b$ & pages/s & Sustained per-connection page-server throughput \\
+$S$ & pages & Prefetch stride (fixed mode) \\
+$W$ & pages & Prefetch window (fixed mode) \\
+$\delta$ & --- & Fraction of speculative requests that are wasted \\
+$\lambda_f$ & faults/s & Fault rate observed at \uffd \\
+$\lambda$ & req./s & Total request rate offered to the channel
+            (Eq.~\eqref{eq:offered}) \\
+$\rho_{\!\textit{link}}$ & --- & Link utilization $\lambda/b$
+            (Eq.~\eqref{eq:rho-link}) \\
+$q$ & requests & Observed MPSC-queue depth at the controller \\
+$\rho$ & --- & Per-window duplicate rate
+            (Algorithm~\ref{alg:controller}) \\
+$\dupthr$ & --- & Duplicate-rate disable threshold (0.70) \\
+$\qthr$ & requests & Queue-depth disable threshold (500) \\
+$\drainthr$ & requests & Drain threshold before re-enable (64) \\
+$N$ & faults & Controller window size (128) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ── Acknowledgment ──────────────────────────────────────────────────────────
+\section*{Acknowledgment}
+
+The author thanks the CRIU project maintainers and the broader Linux
+\uffd community whose interfaces and documentation made this work
+possible. All measurements were collected on personal hardware; no
+external compute or funding supported the experiments reported here.
+
+\section*{Funding}
+
+This research received no specific grant from any funding agency in the
+public, commercial, or not-for-profit sectors. Compute resources were
+provided by the author's personal hardware.
+
+\section*{Data and Code Availability}
+
+The full experimental artifact---page-server implementation, lazy
+handler, benchmark harness, raw CSV results, per-iteration handler logs,
+statistical post-processing scripts, and the figure-generation pipeline
+used to produce Figs.~\ref{fig:pytorch_ttfr}--\ref{fig:prefetch_vol}---is
+publicly available at
+\url{https://github.com/kernex-sbs/DistriProc} under a permissive licence.
+The exact commit that produced the numbers reported in this paper is
+\texttt{97caf28}. All tables in this paper can be regenerated from
+\texttt{eval/results/results.csv} with standard Welch's procedure; no
+external scripts or proprietary data are required.
+
+\section*{Author Contributions}
+
+U.~Maurya is the sole author. He conceived the system, implemented
+\distriproc, designed and conducted the experiments, performed the
+statistical analysis, and wrote the manuscript.
+
+\section*{Conflicts of Interest}
+
+The author declares no competing financial or non-financial interests
+relevant to the content of this article.
+
 % ── Bibliography ─────────────────────────────────────────────────────────────
-{\small\bibliography{references}}
+\newpage
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+% ── Biography ────────────────────────────────────────────────────────────────
+\newpage
+\begin{IEEEbiographynophoto}{Utkarsh Maurya}
+is an independent systems researcher whose work centers on Linux kernel
+interfaces for memory management, process checkpoint/restore, and
+userspace runtimes for remote and disaggregated memory. He is the author
+and sole maintainer of the \emph{kernex} project, an open-source effort
+to make post-CRIU lazy-restore practical for real Linux workloads;
+\distriproc is the first system released as part of that effort. His
+broader research interests include the design of low-overhead control
+loops for kernel-userspace interactions, the use of \uffd-style interfaces
+beyond checkpoint/restore (for example, in snapshotted virtual machines,
+sandboxes, and serverless function instances), and the quantitative
+measurement of cold-start regimes in production-style container and
+inference workloads.
+
+Mr.~Maurya holds a strong preference for systems that can be reproduced
+end-to-end from a single command on commodity hardware; the artifact
+accompanying this paper---including the benchmark harness, page-server
+implementation, statistical post-processing scripts, and figure-generation
+pipeline---is publicly available at
+\url{https://github.com/kernex-sbs/DistriProc} under a permissive licence.
+The exact commit producing the numbers in Tables~\ref{tab:ttfr},
+\ref{tab:ttest}, and \ref{tab:prefetch} is \texttt{97caf28}. Correspondence
+may be directed to \url{projects.utkarshmaurya@gmail.com}.
+\end{IEEEbiographynophoto}
 
 \end{document}

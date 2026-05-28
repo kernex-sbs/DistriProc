@@ -1,13 +1,22 @@
+% ============================================================================
+%  references.bib -- DistriProc paper
+%  Prefer peer-reviewed conference/journal cites over web citations.
+%  All entries verified against USENIX/ACM/IEEE/dblp (May 2026).
+% ============================================================================
+
+% ── CRIU / userfaultfd / lazy migration ─────────────────────────────────────
 @misc{criu,
   title        = {{CRIU}: Checkpoint/Restore In Userspace},
   howpublished = {\url{https://criu.org}},
   year         = {2013},
+  note         = {Project documentation},
 }
 
 @misc{criu-lazy,
   title        = {{CRIU} Lazy Migration},
   howpublished = {\url{https://criu.org/Lazy_migration}},
   year         = {2017},
+  note         = {Design wiki},
 }
 
 @misc{userfaultfd,
@@ -16,70 +25,349 @@
   year         = {2016},
 }
 
-@inproceedings{gu2017infiniswap,
-  author    = {Gu, Juncheng and Lee, Youngmoon and Zhang, Yiwen and Chowdhury, Mosharaf and Shin, Kang G.},
-  title     = {Efficient Memory Disaggregation with {Infiniswap}},
-  booktitle = {14th USENIX Symposium on Networked Systems Design and Implementation (NSDI)},
-  year      = {2017},
-  pages     = {649--667},
-}
-
-@inproceedings{amaro2020can,
-  author    = {Amaro, Emmanuel and Branner-Augmon, Christopher and Luo, Zhihong and Ousterhout, Amy and Aguilera, Marcos K. and Panda, Aurojit and Ratnasamy, Sylvia and Shenker, Scott},
-  title     = {Can Far Memory Improve Job Throughput?},
-  booktitle = {Proceedings of the Fifteenth European Conference on Computer Systems (EuroSys)},
-  year      = {2020},
-}
-
-@inproceedings{ruan2020aifm,
-  author    = {Ruan, Zhenyuan and Schwarzkopf, Malte and Aguilera, Marcos K. and Belay, Adam},
-  title     = {{AIFM}: High-Performance, Application-Integrated Far Memory},
-  booktitle = {14th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
-  year      = {2020},
-  pages     = {315--332},
-}
-
-@article{chen1995effective,
-  author  = {Chen, Tien-Fu and Baer, Jean-Loup},
-  title   = {Effective Hardware-Based Data Prefetching for High-Performance Processors},
-  journal = {IEEE Transactions on Computers},
-  volume  = {44},
-  number  = {5},
-  pages   = {609--623},
-  year    = {1995},
-}
-
-@inproceedings{srinath2007feedback,
-  author    = {Srinath, Santhosh and Mutlu, Onur and Kim, Hyesoon and Patt, Yale N.},
-  title     = {Feedback Directed Prefetching: Improving the Performance and Bandwidth-Efficiency of Hardware Prefetchers},
-  booktitle = {IEEE 13th International Symposium on High Performance Computer Architecture (HPCA)},
-  year      = {2007},
-  pages     = {63--74},
+@misc{corbet2015userfaultfd,
+  author       = {Corbet, Jonathan},
+  title        = {User-space page fault handling},
+  howpublished = {LWN.net},
+  year         = {2015},
+  note         = {\url{https://lwn.net/Articles/636226/}},
 }
 
 @misc{runc-lazy,
-  title        = {Lazy restore support in runc},
+  title        = {Lazy restore support in {runc}},
   howpublished = {\url{https://github.com/opencontainers/runc}},
   year         = {2020},
 }
 
+% ── Process and VM checkpoint/migration ─────────────────────────────────────
+@inproceedings{litzkow1997checkpoint,
+  author       = {Litzkow, Michael and Tannenbaum, Todd and Basney, Jim and Livny, Miron},
+  title        = {Checkpoint and Migration of {UNIX} Processes in the {Condor} Distributed Processing System},
+  booktitle    = {Technical Report TR-1346, University of Wisconsin--Madison Computer Sciences},
+  year         = {1997},
+}
+
+@inproceedings{sapuntzakis2002optimizing,
+  author       = {Sapuntzakis, Constantine P. and Chandra, Ramesh and Pfaff, Ben and Chow, Jim and Lam, Monica S. and Rosenblum, Mendel},
+  title        = {Optimizing the Migration of Virtual Computers},
+  booktitle    = {5th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
+  year         = {2002},
+  pages        = {377--390},
+}
+
+@inproceedings{clark2005live,
+  author       = {Clark, Christopher and Fraser, Keir and Hand, Steven and Hansen, Jacob Gorm and Jul, Eric and Limpach, Christian and Pratt, Ian and Warfield, Andrew},
+  title        = {Live Migration of Virtual Machines},
+  booktitle    = {2nd USENIX Symposium on Networked Systems Design and Implementation (NSDI)},
+  year         = {2005},
+  pages        = {273--286},
+}
+
+% ── Remote / disaggregated memory ───────────────────────────────────────────
+@inproceedings{gu2017infiniswap,
+  author       = {Gu, Juncheng and Lee, Youngmoon and Zhang, Yiwen and Chowdhury, Mosharaf and Shin, Kang G.},
+  title        = {Efficient Memory Disaggregation with {Infiniswap}},
+  booktitle    = {14th USENIX Symposium on Networked Systems Design and Implementation (NSDI)},
+  year         = {2017},
+  pages        = {649--667},
+}
+
+@inproceedings{amaro2020can,
+  author       = {Amaro, Emmanuel and Branner-Augmon, Christopher and Luo, Zhihong and Ousterhout, Amy and Aguilera, Marcos K. and Panda, Aurojit and Ratnasamy, Sylvia and Shenker, Scott},
+  title        = {Can Far Memory Improve Job Throughput?},
+  booktitle    = {Proceedings of the 15th European Conference on Computer Systems (EuroSys)},
+  year         = {2020},
+}
+
+@inproceedings{ruan2020aifm,
+  author       = {Ruan, Zhenyuan and Schwarzkopf, Malte and Aguilera, Marcos K. and Belay, Adam},
+  title        = {{AIFM}: High-Performance, Application-Integrated Far Memory},
+  booktitle    = {14th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
+  year         = {2020},
+  pages        = {315--332},
+}
+
+@inproceedings{zhou2022carbink,
+  author       = {Zhou, Yang and Wassel, Hassan M.G. and Liu, Sihang and Gao, Jiaqi and Mickens, James and Yu, Minlan and Kennelly, Chris and Turner, Paul and Culler, David E. and Levy, Henry M. and Vahdat, Amin},
+  title        = {{Carbink}: Fault-Tolerant Far Memory},
+  booktitle    = {16th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
+  year         = {2022},
+  pages        = {55--71},
+}
+
+@inproceedings{lee2022hydra,
+  author       = {Lee, Youngmoon and Al Maruf, Hasan and Chowdhury, Mosharaf and Cidon, Asaf and Shin, Kang G.},
+  title        = {{Hydra}: Resilient and Highly Available Remote Memory},
+  booktitle    = {20th USENIX Conference on File and Storage Technologies (FAST)},
+  year         = {2022},
+  pages        = {181--198},
+}
+
 @inproceedings{shan2018legoos,
-  author    = {Shan, Yizhou and Huang, Yutong and Chen, Yilun and Zhang, Yiying},
-  title     = {{LegoOS}: A Disseminated, Distributed {OS} for Hardware Resource Disaggregation},
-  booktitle = {13th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
-  year      = {2018},
-  pages     = {69--87},
+  author       = {Shan, Yizhou and Huang, Yutong and Chen, Yilun and Zhang, Yiying},
+  title        = {{LegoOS}: A Disseminated, Distributed {OS} for Hardware Resource Disaggregation},
+  booktitle    = {13th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
+  year         = {2018},
+  pages        = {69--87},
 }
 
 @misc{cxl,
-  title        = {Compute Express Link Specification},
+  title        = {{Compute Express Link} Specification, Revision 3.0},
   howpublished = {\url{https://www.computeexpresslink.org}},
+  year         = {2022},
+}
+
+% ── Prefetch policies ───────────────────────────────────────────────────────
+@article{chen1995effective,
+  author       = {Chen, Tien-Fu and Baer, Jean-Loup},
+  title        = {Effective Hardware-Based Data Prefetching for High-Performance Processors},
+  journal      = {IEEE Transactions on Computers},
+  volume       = {44},
+  number       = {5},
+  pages        = {609--623},
+  year         = {1995},
+}
+
+@inproceedings{srinath2007feedback,
+  author       = {Srinath, Santhosh and Mutlu, Onur and Kim, Hyesoon and Patt, Yale N.},
+  title        = {Feedback Directed Prefetching: Improving the Performance and Bandwidth-Efficiency of Hardware Prefetchers},
+  booktitle    = {IEEE 13th International Symposium on High Performance Computer Architecture (HPCA)},
+  year         = {2007},
+  pages        = {63--74},
+}
+
+@inproceedings{joseph1997prediction,
+  author       = {Joseph, Doug and Grunwald, Dirk},
+  title        = {Prefetching Using {Markov} Predictors},
+  booktitle    = {Proceedings of the 24th International Symposium on Computer Architecture (ISCA)},
+  year         = {1997},
+  pages        = {252--263},
+}
+
+@article{cao1996integrated,
+  author       = {Cao, Pei and Felten, Edward W. and Karlin, Anna R. and Li, Kai},
+  title        = {Implementation and Performance of Integrated Application-Controlled Caching, Prefetching, and Disk Scheduling},
+  journal      = {ACM Transactions on Computer Systems (TOCS)},
+  volume       = {14},
+  number       = {4},
+  pages        = {311--343},
+  year         = {1996},
+}
+
+% ── Networking / congestion analog ──────────────────────────────────────────
+@article{gettys2011bufferbloat,
+  author       = {Gettys, Jim and Nichols, Kathleen},
+  title        = {Bufferbloat: Dark Buffers in the {Internet}},
+  journal      = {Communications of the ACM},
+  volume       = {55},
+  number       = {1},
+  pages        = {57--65},
+  year         = {2012},
+}
+
+% ── Serverless cold start (closely related: TTFR-style metric) ──────────────
+@inproceedings{du2020catalyzer,
+  author       = {Du, Dong and Yu, Tianyi and Xia, Yubin and Zang, Binyu and
+                  Yan, Guanglu and Qin, Chenggang and Wu, Qixuan and Chen, Haibo},
+  title        = {Catalyzer: Sub-millisecond Startup for Serverless Computing
+                  with Initialization-less Booting},
+  booktitle    = {25th International Conference on Architectural Support for
+                  Programming Languages and Operating Systems (ASPLOS)},
+  pages        = {467--481},
+  year         = {2020},
+}
+
+@inproceedings{ustiugov2021reap,
+  author       = {Ustiugov, Dmitrii and Petrov, Plamen and Kogias, Marios and
+                  Bugnion, Edouard and Grot, Boris},
+  title        = {Benchmarking, Analysis, and Optimization of Serverless
+                  Function Snapshots},
+  booktitle    = {26th International Conference on Architectural Support for
+                  Programming Languages and Operating Systems (ASPLOS)},
+  pages        = {559--572},
+  year         = {2021},
+}
+
+@inproceedings{agache2020firecracker,
+  author       = {Agache, Alexandru and Brooker, Marc and Florescu, Andreea and
+                  Iordache, Alexandra and Liguori, Anthony and Neugebauer, Rolf
+                  and Piwonka, Phil and Popa, Diana-Maria},
+  title        = {Firecracker: Lightweight Virtualization for Serverless
+                  Applications},
+  booktitle    = {17th USENIX Symposium on Networked Systems Design and
+                  Implementation (NSDI)},
+  pages        = {419--434},
+  year         = {2020},
+}
+
+@inproceedings{mohan2019agile,
+  author       = {Mohan, Anup and Sane, Harshad and Doshi, Kshitij and
+                  Edupuganti, Saikrishna and Nayak, Naren and Sukhomlinov, Vadim},
+  title        = {Agile Cold Starts for Scalable Serverless},
+  booktitle    = {11th USENIX Workshop on Hot Topics in Cloud Computing (HotCloud)},
   year         = {2019},
 }
 
-@inproceedings{cao1994influence,
-  author    = {Cao, Pei and Felten, Edward W. and Karlin, Anna R. and Li, Kai},
-  title     = {Implementation and Performance of Integrated Application-Controlled File Caching, Prefetching, and Disk Scheduling},
-  booktitle = {1st USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
-  year      = {1994},
+@inproceedings{wang2018peeking,
+  author       = {Wang, Liang and Li, Mengyuan and Zhang, Yinqian and Ristenpart,
+                  Thomas and Swift, Michael},
+  title        = {Peeking Behind the Curtains of Serverless Platforms},
+  booktitle    = {USENIX Annual Technical Conference (ATC)},
+  pages        = {133--146},
+  year         = {2018},
+}
+
+@inproceedings{shahrad2020serverless,
+  author       = {Shahrad, Mohammad and Fonseca, Rodrigo and Goiri, {\'I}{\~n}igo
+                  and Chaudhry, Gohar and Batum, Paul and Cooke, Jason and
+                  Laureano, Eduardo and Tresness, Colby and Russinovich, Mark and
+                  Bianchini, Ricardo},
+  title        = {Serverless in the Wild: Characterizing and Optimizing the
+                  Serverless Workload at a Large Cloud Provider},
+  booktitle    = {USENIX Annual Technical Conference (ATC)},
+  pages        = {205--218},
+  year         = {2020},
+}
+
+@inproceedings{shen2021nightcore,
+  author       = {Jia, Zhipeng and Witchel, Emmett},
+  title        = {Nightcore: Efficient and Scalable Serverless Computing for
+                  Latency-Sensitive, Interactive Microservices},
+  booktitle    = {26th International Conference on Architectural Support for
+                  Programming Languages and Operating Systems (ASPLOS)},
+  pages        = {152--166},
+  year         = {2021},
+}
+
+% ── Live VM migration variants ──────────────────────────────────────────────
+@inproceedings{hines2009postcopy,
+  author       = {Hines, Michael R. and Deshpande, Umesh and Gopalan, Kartik},
+  title        = {Post-Copy Live Migration of Virtual Machines},
+  booktitle    = {ACM SIGOPS Operating Systems Review},
+  volume       = {43},
+  number       = {3},
+  pages        = {14--26},
+  year         = {2009},
+}
+
+@inproceedings{waldspurger2002memory,
+  author       = {Waldspurger, Carl A.},
+  title        = {Memory Resource Management in {VMware ESX} Server},
+  booktitle    = {5th Symposium on Operating Systems Design and Implementation
+                  (OSDI)},
+  pages        = {181--194},
+  year         = {2002},
+}
+
+% ── Remote / far / disaggregated memory (extended) ─────────────────────────
+@inproceedings{al2020leap,
+  author       = {Al Maruf, Hasan and Chowdhury, Mosharaf},
+  title        = {Effectively Prefetching Remote Memory with {Leap}},
+  booktitle    = {USENIX Annual Technical Conference (ATC)},
+  pages        = {843--857},
+  year         = {2020},
+}
+
+@inproceedings{lagar2019software,
+  author       = {Lagar-Cavilla, Andres and Ahn, Junwhan and Souhlal, Suleiman
+                  and Agarwal, Neha and Burny, Radoslaw and Butt, Shakeel and
+                  Chang, Jichuan and Chaugule, Ashwin and Deng, Nan and Shahid,
+                  Junaid and Thelen, Greg and Yurtsever, Kamil Adam and Zhao,
+                  Yu and Ranganathan, Parthasarathy},
+  title        = {Software-Defined Far Memory in Warehouse-Scale Computers},
+  booktitle    = {24th International Conference on Architectural Support for
+                  Programming Languages and Operating Systems (ASPLOS)},
+  pages        = {317--330},
+  year         = {2019},
+}
+
+@inproceedings{lim2009disaggregated,
+  author       = {Lim, Kevin and Chang, Jichuan and Mudge, Trevor and Ranganathan,
+                  Parthasarathy and Reinhardt, Steven K. and Wenisch, Thomas F.},
+  title        = {Disaggregated Memory for Expansion and Sharing in Blade Servers},
+  booktitle    = {36th Annual International Symposium on Computer Architecture (ISCA)},
+  pages        = {267--278},
+  year         = {2009},
+}
+
+@inproceedings{wang2020semeru,
+  author       = {Wang, Chenxi and Ma, Haoran and Liu, Shi and Li, Yuanqi and
+                  Ruan, Zhenyuan and Nguyen, Khanh and Bond, Michael D. and
+                  Netravali, Ravi and Kim, Miryung and Xu, Guoqing Harry},
+  title        = {Semeru: A Memory-Disaggregated Managed Runtime},
+  booktitle    = {14th USENIX Symposium on Operating Systems Design and
+                  Implementation (OSDI)},
+  pages        = {261--280},
+  year         = {2020},
+}
+
+@inproceedings{calciu2021clio,
+  author       = {Guo, Zhiyuan and Shan, Yizhou and Luo, Xuhao and Huang, Yutong
+                  and Zhang, Yiying},
+  title        = {Clio: A Hardware-Software Co-Designed Disaggregated Memory System},
+  booktitle    = {27th ACM International Conference on Architectural Support for
+                  Programming Languages and Operating Systems (ASPLOS)},
+  pages        = {417--433},
+  year         = {2022},
+}
+
+@inproceedings{gao2016network,
+  author       = {Gao, Peter Xiang and Narayan, Akshay and Karandikar, Sagar and
+                  Carreira, Joao and Han, Sangjin and Agarwal, Rachit and
+                  Ratnasamy, Sylvia and Shenker, Scott},
+  title        = {Network Requirements for Resource Disaggregation},
+  booktitle    = {12th USENIX Symposium on Operating Systems Design and
+                  Implementation (OSDI)},
+  pages        = {249--264},
+  year         = {2016},
+}
+
+% ── Prefetching (extended) ──────────────────────────────────────────────────
+@inproceedings{hashemi2018learning,
+  author       = {Hashemi, Milad and Swersky, Kevin and Smith, Jamie A. and Ayers,
+                  Grant and Litz, Heiner and Chang, Jichuan and Kozyrakis,
+                  Christos and Ranganathan, Parthasarathy},
+  title        = {Learning Memory Access Patterns},
+  booktitle    = {35th International Conference on Machine Learning (ICML)},
+  pages        = {1924--1933},
+  year         = {2018},
+}
+
+% ── Transport / congestion ──────────────────────────────────────────────────
+@inproceedings{jacobson1988congestion,
+  author       = {Jacobson, Van},
+  title        = {Congestion Avoidance and Control},
+  booktitle    = {ACM SIGCOMM Computer Communication Review},
+  volume       = {18},
+  number       = {4},
+  pages        = {314--329},
+  year         = {1988},
+}
+
+@article{brakmo1995vegas,
+  author       = {Brakmo, Lawrence S. and Peterson, Larry L.},
+  title        = {{TCP Vegas}: End to End Congestion Avoidance on a Global Internet},
+  journal      = {IEEE Journal on Selected Areas in Communications},
+  volume       = {13},
+  number       = {8},
+  pages        = {1465--1480},
+  year         = {1995},
+}
+
+% ── Linux memory pressure signals ───────────────────────────────────────────
+@misc{linux-psi,
+  author       = {{Linux kernel documentation}},
+  title        = {{PSI}: Pressure Stall Information},
+  howpublished = {\url{https://docs.kernel.org/accounting/psi.html}},
+  year         = {2018},
+}
+
+% ── CRIU-MR multi-region / CRIU live migration practice ────────────────────
+@inproceedings{venkatesh2019fast,
+  author       = {Sarpangala Venkatesh, Ranjan and Smejkal, Till and
+                  Milojicic, Dejan S. and Gavrilovska, Ada},
+  title        = {Fast In-Memory {CRIU} for Docker Containers},
+  booktitle    = {International Symposium on Memory Systems (MEMSYS)},
+  pages        = {53--65},
+  year         = {2019},
 }
