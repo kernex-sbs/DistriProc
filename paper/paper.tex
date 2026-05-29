@@ -611,9 +611,9 @@ PyTorch    & 191  & 7   & 650  & 10  & 1227 & 24  & 655 & 9   \\
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{fig1_pytorch_ttfr.pdf}
-  \caption{PyTorch TTFR across restore modes. Fixed prefetch nearly doubles
-    TTFR; adaptive recovers to $655$\,ms. Dashed line: H1 threshold
-    ($1000$\,ms).}
+  \caption{PyTorch TTFR across restore modes at loopback RTT. Fixed prefetch
+    increases TTFR by $88\,\%$; adaptive recovers to $655$\,ms. Dashed line:
+    H1 threshold ($1000$\,ms).}
   \label{fig:pytorch_ttfr}
 \end{figure}
 
@@ -698,8 +698,10 @@ Redis    & fixed vs.\ adaptive       &  +0.41 & 38.0 & $0.68$              \\
 \subsection{The Fixed-Prefetch Paradox}
 \label{sec:paradox}
 
-Fixed prefetch on PyTorch reduces page faults by $85\,\%$ yet increases
-TTFR by $88\,\%$ (Fig.~\ref{fig:faults_vs_ttfr}). The paradox is explained by
+At loopback RTT, fixed prefetch on PyTorch reduces page faults by $85\,\%$
+yet increases TTFR by $88\,\%$ (Fig.~\ref{fig:faults_vs_ttfr}); this is the
+congestion-bound regime, and \S\ref{sec:crosshost} shows the effect reverses
+once RTT exceeds $\approx\!125\,\mu$s. The paradox is explained by
 TCP channel dynamics. The prefetch worker generates a backlog of pending
 TCP reads on the secondary connection. Although this does not directly
 block the primary connection, it congests the page server's socket send
@@ -1065,15 +1067,19 @@ controller disables immediately (PyTorch: $97\,\%$ duplicate, $q\!=\!1454$;
 Redis: $98\,\%$, $q\!=\!541$).
 
 \textbf{Deployment guidance.}\, For operators considering CRIU lazy restore
-in production, our measurements suggest three operational rules. First,
-estimate the working-set ratio (touched pages before TTFR over total mapped
-pages); if it is below ${\sim}5\,\%$, demand-only lazy is sufficient and
-prefetch yields no benefit on any of our workloads. Second, size the bounded prefetch queue $Q$ from the
-page-server's sustained throughput $b$ so that the disable threshold
-$\qthr\!=\!Q/2$ corresponds to a tolerable queueing delay
-$\Delta_\textit{tolerable}\!\approx\!(Q/2)/b$; with our $Q\!=\!8192$ and
-$b\!\approx\!24{,}000$\,pages/s this caps added delay near
-$\Delta_\textit{tolerable}\!\approx\!170$\,ms. Third, separate the
+in production, our measurements suggest four operational rules. First,
+check the transport RTT against the crossover (\S\ref{sec:crosshost}): above
+$\approx\!125\,\mu$s---i.e.\ essentially any real network---prefetch hides
+latency and should stay \emph{enabled}; the adaptive controller and the rest
+of this guidance target the sub-crossover (loopback / same-host / RDMA-class)
+regime where prefetch can congest. Second, in that regime estimate the
+working-set ratio (touched pages before TTFR over total mapped pages); if it
+is below ${\sim}5\,\%$, demand-only lazy already suffices. Third, size the
+bounded prefetch queue $Q$ from the page-server's sustained throughput $b$
+so that the disable threshold $\qthr\!=\!Q/2$ corresponds to a tolerable
+queueing delay $\Delta_\textit{tolerable}\!\approx\!(Q/2)/b$; with our
+$Q\!=\!8192$ and $b\!\approx\!24{,}000$\,pages/s this caps added delay near
+$\Delta_\textit{tolerable}\!\approx\!170$\,ms. Fourth, separate the
 fault-path and prefetch-path TCP connections at the page-server end
 (distinct sockets, ideally distinct kernel send buffers) so the disable
 decision can drain prefetch backlog without simultaneously stalling fault
@@ -1412,13 +1418,12 @@ $t$-distribution intervals,
   \label{eq:ci}
 \end{equation}
 with $n\!=\!20$ and $t_{0.025,19}\!=\!2.093$. For $p$-values we use a
-two-tailed test against the null $\mathbb{E}[X]\!=\!\mathbb{E}[Y]$. With
-$n_1\!=\!n_2\!=\!5$ the smallest detectable difference at $\alpha\!=\!0.05$
-is roughly $1.6\,\sigma_{\textit{pool}}/\sqrt{5}$, i.e.\ effects below that
-threshold (the $61$\,ms adaptive--lazy gap on PyTorch, for instance) can
-neither be confirmed nor ruled out from these data; this is the source of
-the $p\!=\!0.11$ entry in Table~\ref{tab:ttest} and the limitation noted
-in \S\ref{sec:limitations}.
+two-tailed test against the null $\mathbb{E}[X]\!=\!\mathbb{E}[Y]$. Even at
+$n_1\!=\!n_2\!=\!20$ a sufficiently small mean difference stays below the
+resolution of the test: the $5.5$\,ms adaptive--lazy gap on PyTorch yields
+$t\!=\!-0.82$, $p\!=\!0.42$ (Table~\ref{tab:ttest}), so we treat adaptive
+and demand-only lazy as statistically indistinguishable rather than claiming
+the residual gap is real (\S\ref{sec:limitations}).
 
 \section{Worked Numerical Example on PyTorch}
 \label{app:worked}
