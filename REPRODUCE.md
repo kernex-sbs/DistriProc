@@ -110,6 +110,22 @@ sudo bash eval/ablation_thresholds.sh   # 5 disable/halve pairs × n=5 on PyTorc
 This must run on 6.18.x: on a kernel where the regression is absent there is
 nothing for any threshold to recover.
 
+## 6b. Cross-host RTT sensitivity (optional)
+
+To test whether the paradox survives off zero-latency loopback, inject RTT on
+the loopback TCP path with `tc netem` and re-run the PyTorch matrix at several
+delays:
+
+```bash
+sudo bash eval/crosshost_netem.sh   # one-way delays 0/250/500/1000 us, n=10
+```
+
+This adds latency only to IP traffic on `lo` (the CRIU control socket is
+AF_UNIX and unaffected; `full` restore has no page server and is the zero-RTT
+reference). The script always removes the netem qdisc on exit. Results land in
+`eval/results/crosshost/results-crosshost.csv` with an `rtt_us` column. This is
+emulated latency on one host; a true two-machine run remains future work.
+
 ## 7. Outputs
 
 - `eval/results/results.csv` — raw per-iteration data

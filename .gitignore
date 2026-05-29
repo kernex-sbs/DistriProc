@@ -18,6 +18,8 @@ eval/results/pilot-cpu/
 eval/results/pilot-6187/
 # Ablation: track the summary CSV, ignore the bulky per-setting logs
 eval/results/ablation/logs/
+# Cross-host: track the summary CSV, ignore per-RTT raw dirs
+eval/results/crosshost/d*/
 
 # Logs
 *.log
