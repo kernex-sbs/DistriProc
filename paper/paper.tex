@@ -92,7 +92,7 @@
 \newcommand{\drainthr}{\ensuremath{\tau_\textit{drain}}}
 
 % ── Title block ──────────────────────────────────────────────────────────────
-\title{\distriproc: An Adaptive Post-Restore\\Remote-Memory Runtime for Linux Processes}
+\title{When Prefetch Hurts: RTT-Dependent Speculative\\Paging in CRIU Lazy Restore}
 
 \ifanon
 \author{Anonymous Author(s)%
@@ -111,10 +111,10 @@ artifact repository omitted; the artifact will be released on acceptance.}%
 % Running headers for odd/even pages.
 \ifanon
 \markboth{Submitted for double-blind review --- do not distribute}%
-{\distriproc: An Adaptive Post-Restore Remote-Memory Runtime}
+{When Prefetch Hurts: RTT-Dependent Speculative Paging in CRIU Lazy Restore}
 \else
 \markboth{Journal of Systems and Networking Research,~Vol.~XX, No.~X, Month~Year}%
-{Maurya: \distriproc: An Adaptive Post-Restore Remote-Memory Runtime}
+{Maurya: When Prefetch Hurts: RTT-Dependent Speculative Paging in CRIU Lazy Restore}
 \fi
 
 % ─────────────────────────────────────────────────────────────────────────────
@@ -148,10 +148,9 @@ controller recovers essentially all of the loopback regression
 ($1{,}227\!\to\!655$\,ms; Welch $t\!=\!46.1$, $p<10^{-9}$; within $5.5$\,ms
 of demand-only, $p\!=\!0.42$); above the crossover, where prefetch is
 beneficial, its disable policy is conservative and leaves $10$--$20\,\%$
-unclaimed, motivating an RTT-aware controller. We frame the contribution as
-a measurement study of \emph{when} speculative prefetch helps post-restore,
-with the controller as one workable point in that space rather than a claim
-of algorithmic novelty.
+unclaimed, motivating an RTT-aware controller. The contribution is a
+measurement study of \emph{when} speculative prefetch helps post-restore,
+with the controller as one workable point in that space.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -164,7 +163,17 @@ network latency
 \section{Introduction}
 \label{sec:intro}
 
-\IEEEPARstart{C}{loud} platforms routinely checkpoint and migrate running
+\IEEEPARstart{W}{hether} speculatively prefetching pages speeds up or slows
+down a process restored from a checkpoint hinges on a single variable:
+round-trip time. We show that the same fixed prefetch policy
+\emph{increases} time-to-first-request (TTFR) by $88\,\%$ at loopback RTT
+yet \emph{reduces} it by $37\,\%$ once RTT exceeds $\approx\!125\,\mu$s---and
+that, counter-intuitively, the harmful case cuts the page-fault count by
+$85\,\%$ even as latency worsens. This paper establishes that crossover for
+CRIU lazy restore and gives a userspace runtime, \distriproc, that acts on
+it.
+
+Cloud platforms routinely checkpoint and migrate running
 processes for load balancing, preemption recovery, and live
 migration~\cite{clark2005live, sapuntzakis2002optimizing}. CRIU~\cite{criu} provides this
 capability for Linux processes without application modification. Its
@@ -217,28 +226,29 @@ using only locally observable signals, without kernel changes or RDMA.
 \noindent\textbf{Contributions.}\, This paper makes four contributions:
 
 \begin{itemize}
-\item \emph{Empirical paradox.} We show that at loopback RTT fixed
-sequential prefetch increases PyTorch TTFR by $88\,\%$
-($650 \to 1{,}227$\,ms) while reducing page faults by $85\,\%$---fault
-reduction is not a reliable proxy for latency under post-restore remote
-memory (\S\ref{sec:paradox}).
+\item \emph{The RTT-dependent characterization (our central result).} At
+loopback RTT, fixed sequential prefetch increases PyTorch TTFR by $88\,\%$
+($650 \to 1{,}227$\,ms) while \emph{reducing} page faults by $85\,\%$---so
+fault count is not a reliable proxy for latency. By injecting RTT with
+\texttt{netem} we then locate a crossover near $\approx\!125\,\mu$s: below
+it prefetch is harmful (congestion-bound), above it prefetch \emph{reduces}
+TTFR (latency-bound, $-37\,\%$ at $1$\,ms; demand-only lazy even times out
+at $2$\,ms). This maps \emph{when} speculative prefetch helps post-restore
+(\S\ref{sec:paradox},~\S\ref{sec:crosshost}).
 
-\item \emph{RTT crossover.} By injecting RTT with \texttt{netem} we locate
-a crossover near $\approx\!125\,\mu$s RTT: below it prefetch is harmful
-(congestion-bound), above it prefetch reduces TTFR (latency-bound,
-$-37\,\%$ at $1$\,ms; demand-only lazy even times out at $2$\,ms). This
-maps \emph{when} speculative prefetch helps post-restore
-(\S\ref{sec:crosshost}). We also confirm a $24.5\times$ lazy-vs-full TTFR
-reduction for memory-light workloads (\S\ref{sec:eval}).
+\item \emph{Generality across kernels and workloads.} The paradox and its
+mitigation hold on both Linux $6.18.7$ and $7.0.9$ ($+88\,\%$ vs.\
+$+37\,\%$; magnitude is kernel-dependent, \S\ref{sec:crosskernel}), and lazy
+restore delivers a $24.5\times$ TTFR win for memory-light workloads
+(\S\ref{sec:eval}).
 
-\item \emph{Mitigation in userspace.} We design a feedback controller
-(duplicate-fetch pressure + queue depth, $128$-fault window) that in the
-congestion-bound regime recovers $572$\,ms of the fixed-prefetch
-regression---within $5.5$\,ms of demand-only lazy ($p = 0.42$, $n = 20$)---
-and cuts prefetch volume $52$--$55\,\%$ on memory-light workloads. Above
-the crossover it conservatively tracks lazy, leaving $10$--$20\,\%$
-unclaimed and motivating RTT-awareness (\S\ref{sec:controller-eval}). It is
-a workable mitigation, not a claim of algorithmic novelty.
+\item \emph{A userspace mitigation.} A feedback controller
+(duplicate-fetch pressure + queue depth, $128$-fault window) recovers
+$572$\,ms of the congestion-bound regression---to within $5.5$\,ms of
+demand-only lazy ($p = 0.42$, $n = 20$)---using only locally observable
+signals, no kernel changes or RDMA. Above the crossover it conservatively
+tracks lazy, leaving $10$--$20\,\%$ unclaimed and motivating RTT-awareness
+(\S\ref{sec:controller-eval}).
 
 \item \emph{Reproducible artifact.} We release \distriproc as an
 open-source userspace daemon (${\sim}1{,}200$ lines of C and
@@ -488,8 +498,10 @@ proxy crosses its threshold is therefore equivalent to disabling the
 moment Eq.~\eqref{eq:condition} is violated. The disable thresholds
 $\dupthr\!=\!0.80$ and $\qthr\!=\!Q/2$ correspond to $80\,\%$ waste or a
 half-full prefetch queue ($\approx\!170$\,ms of backlog at the measured
-page-server throughput), which matches the regime in which the cost model
-predicts $T_\textit{prefetch} > T_\textit{lazy}$ on our workloads.
+page-server throughput), which coincides with the regime in which
+$T_\textit{prefetch} > T_\textit{lazy}$ on our workloads. We use the model
+to \emph{explain} this boundary, not to predict it: the thresholds were set
+empirically and the model is fit to account for where they land.
 
 % ── 4. Implementation ───────────────────────────────────────────────────────
 \section{Implementation}
@@ -909,7 +921,7 @@ realized on workloads where prefetch was cheap to begin with.
   \label{fig:prefetch_vol}
 \end{figure}
 
-\subsection{Cross-Host RTT Sensitivity}
+\subsection{The RTT Crossover}
 \label{sec:crosshost}
 
 The results so far use a loopback page server, which is the best case for the
@@ -1428,9 +1440,12 @@ the residual gap is real (\S\ref{sec:limitations}).
 \section{Worked Numerical Example on PyTorch}
 \label{app:worked}
 
-To make the abstract model concrete, we instantiate
-Eqs.~\eqref{eq:tlazy}--\eqref{eq:condition} with the measured PyTorch
-numbers. Profiling the lazy (demand-only) run gives $F\!\approx\!15{,}515$
+This worked example is \emph{descriptive}: we did not derive the controller's
+behavior from the model in advance and then confirm it. We observed the
+regime experimentally, then instantiate
+Eqs.~\eqref{eq:tlazy}--\eqref{eq:condition} to check that a simple
+shared-channel model accounts for the magnitudes we measured. With that
+caveat, we use the measured PyTorch numbers. Profiling the lazy (demand-only) run gives $F\!\approx\!15{,}515$
 unique pages and $b\!\approx\!24{,}000$~pages/s sustained on the secondary
 TCP connection, with measured per-page round trip $r\!\approx\!42\,\mu$s
 on loopback. Substituting into Eq.~\eqref{eq:tlazy},
