@@ -132,22 +132,25 @@ and how many?
 This paper presents an empirical characterization of how fixed sequential
 prefetch interacts with CRIU lazy restore in the post-restore remote-memory
 phase. We show that a policy widely assumed to be beneficial in fact
-\emph{increases} TTFR by up to $85\,\%$ for memory-heavy workloads, because
+\emph{increases} TTFR by $88\,\%$ for memory-heavy workloads, because
 speculative traffic congests the TCP channel shared with fault resolution;
-critically, fault count drops $60\,\%$ even as latency worsens, so fault
+critically, fault count drops $85\,\%$ even as latency worsens, so fault
 reduction is not a reliable proxy for TTFR. As a practical mitigation we
 introduce \distriproc, a userspace runtime whose feedback-driven controller
 monitors duplicate-fetch pressure and async queue depth within a sliding
 window of page faults and disables prefetch when those signals indicate
 congestion. On three workloads---a synthetic loop, Redis with a
-10{,}000-key dataset, and PyTorch ResNet-18 inference---the controller
-recovers most of the regression introduced by fixed prefetch ($1{,}159 \to
-686$\,ms; $-41\,\%$, Welch $t = 14.8$, $p < 10^{-4}$) and cuts prefetch
-volume by $20$--$58\,\%$ across all workloads. The remaining $61$\,ms gap
-to demand-only lazy is not statistically significant at $n=5$ ($p=0.11$).
-We frame the contribution as a measurement study of prefetch behavior in
-post-restore remote memory, with the controller as one workable mitigation
-rather than a claim of algorithmic novelty.
+10{,}000-key dataset, and PyTorch ResNet-18 inference ($n=20$)---the
+controller recovers essentially all of the regression introduced by fixed
+prefetch ($1{,}227 \to 655$\,ms; $-47\,\%$, Welch $t = 46.1$,
+$p < 10^{-9}$), returning TTFR to within $5.5$\,ms of demand-only lazy
+($p = 0.42$---statistically indistinguishable). On the memory-light
+workloads it also cuts prefetch volume by $52$--$55\,\%$; on the
+memory-heavy workload it instead issues more speculative fetches across
+probe windows yet still recovers TTFR, so its benefit there is latency
+rather than volume. We frame the contribution as a measurement study of
+prefetch behavior in post-restore remote memory, with the controller as
+one workable mitigation rather than a claim of algorithmic novelty.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -185,9 +188,9 @@ empirical finding of this paper is that this assumption is wrong in a
 specific and measurable way: under post-restore conditions, speculative
 prefetch competes with fault-path traffic over the same TCP connection,
 builds an async queue backlog, and delays synchronous fault resolution,
-nearly doubling TTFR on workloads with large working sets (Welch
-$t = -39.6$, $p < 10^{-9}$, $n = 5$). Strikingly, this regression coincides
-with a $60\,\%$ \emph{reduction} in page faults, so the conventional proxy
+increasing TTFR by $88\,\%$ on workloads with large working sets (Welch
+$t = -45.9$, $p < 10^{-9}$, $n = 20$). Strikingly, this regression coincides
+with an $85\,\%$ \emph{reduction} in page faults, so the conventional proxy
 metric points the opposite direction of the observed latency.
 
 \smallskip
@@ -207,13 +210,13 @@ kernel changes or RDMA.
 
 \begin{itemize}
 \item \emph{Empirical paradox.} We show that fixed sequential prefetch
-increases PyTorch TTFR by $85\,\%$ ($625 \to 1{,}159$\,ms) while
-reducing page faults by $60\,\%$---establishing that fault reduction is
+increases PyTorch TTFR by $88\,\%$ ($650 \to 1{,}227$\,ms) while
+reducing page faults by $85\,\%$---establishing that fault reduction is
 not a reliable proxy for latency improvement under post-restore remote
 memory (\S\ref{sec:paradox}).
 
 \item \emph{TTFR regime characterization.} We show that lazy restore
-delivers a $21\times$ TTFR reduction for memory-light workloads but that
+delivers a $24.5\times$ TTFR reduction for memory-light workloads but that
 this benefit inverts for memory-heavy workloads, where the process must
 page in its full working set before serving its first request
 (\S\ref{sec:eval}).
@@ -221,10 +224,11 @@ page in its full working set before serving its first request
 \item \emph{Mitigation in userspace.} We design a feedback controller
 that uses duplicate-fetch pressure and async queue depth as lightweight
 signals within a 128-fault sliding window. The controller recovers
-$473$\,ms of the regression introduced by fixed prefetch
-($p < 10^{-4}$) and cuts prefetch volume $20$--$58\,\%$ across all
-workloads (\S\ref{sec:controller-eval}). It is a workable mitigation,
-not a claim of algorithmic novelty.
+$572$\,ms of the regression introduced by fixed prefetch, returning TTFR
+to within $5.5$\,ms of demand-only lazy ($p = 0.42$, $n = 20$), and cuts
+prefetch volume $52$--$55\,\%$ on the memory-light workloads
+(\S\ref{sec:controller-eval}). It is a workable mitigation, not a claim
+of algorithmic novelty.
 
 \item \emph{Reproducible artifact.} We release \distriproc as an
 open-source userspace daemon (${\sim}1{,}200$ lines of C and
@@ -236,7 +240,7 @@ reproduce every result in this paper from a single command
 All experiments use a TCP loopback page server. RDMA, writable
 remote-memory coherence, and multi-node distribution are out of scope; the
 loopback setting deliberately isolates prefetch policy from cross-host
-network variance, and we discuss its implications in \S\ref{sec:limits}.
+network variance, and we discuss its implications in \S\ref{sec:limitations}.
 
 % ── 2. Background ────────────────────────────────────────────────────────────
 \section{Background and Motivation}
@@ -522,14 +526,14 @@ exits cleanly on restore completion.
 
 \textbf{Hardware:}\, AMD Ryzen 7 7735HS (8 cores), 15\,GB RAM,
 x86\_64.\, \textbf{Software:}\, Linux 6.18.7, CRIU 4.2, Python 3, PyTorch
-(CPU-only).\, \textbf{Transport:}\, TCP over the loopback interface
+2.x (CPU-only).\, \textbf{Transport:}\, TCP over the loopback interface
 (127.0.0.1). All experiments run on a single machine; this represents
 best-case network conditions.
 
-\textbf{Methodology.}\, Each configuration runs $n\!=\!5$ iterations. We
-report mean $\pm$ stddev and the $95\,\%$ confidence interval (CI) computed
-from a Student's $t$-distribution with $n{-}1\!=\!4$ degrees of freedom
-($t_{0.025,4}\!=\!2.776$). Pairwise comparisons use Welch's two-tailed
+\textbf{Methodology.}\, Each configuration runs $n\!=\!20$ iterations. We
+report mean $\pm$ the $95\,\%$ confidence interval (CI) computed
+from a Student's $t$-distribution with $n{-}1\!=\!19$ degrees of freedom
+($t_{0.025,19}\!=\!2.093$). Pairwise comparisons use Welch's two-tailed
 $t$-test, which does not assume equal variances. TTFR is measured from the
 moment \texttt{criu restore} is invoked to the moment the workload responds
 to a probe request.
@@ -545,7 +549,7 @@ in a tight loop and responds to a UDP probe. Footprint $\approx 266$ pages
 \texttt{redis-benchmark}.
 
 \item \textbf{PyTorch}: ResNet-18 loaded into memory, checkpointed, and
-lazily restored. Footprint $\approx 15{,}743$ pages
+lazily restored. Footprint $\approx 15{,}515$ pages
 ($\approx 61$\,MB).
 \end{itemize}
 
@@ -563,7 +567,7 @@ Fig.~\ref{fig:ttfr_all} shows all three workloads.
 
 \begin{table}[t]
 \centering
-\caption{Mean TTFR (ms) $\pm$ $95\,\%$ CI, $n\!=\!5$. H1 threshold:
+\caption{Mean TTFR (ms) $\pm$ $95\,\%$ CI, $n\!=\!20$. H1 threshold:
 ${<}1000$\,ms.}
 \label{tab:ttfr}
 \renewcommand{\arraystretch}{1.15}
@@ -577,9 +581,9 @@ ${<}1000$\,ms.}
 \toprule
 {Workload} & \multicolumn{2}{c}{Full} & \multicolumn{2}{c}{Lazy} & \multicolumn{2}{c}{Fixed} & \multicolumn{2}{c}{Adaptive} \\
 \midrule
-test\_loop & 1020 & 3   & 48   & 5   & 48   & 5   & 49  & 7   \\
-Redis      & 32   & 1   & 46   & 13  & 38   & 11  & 44  & 7   \\
-PyTorch    & 209  & 14  & 625  & 22  & 1159 & 30  & 686 & 83  \\
+test\_loop & 1019 & 2   & 42   & 1   & 43   & 3   & 42  & 2   \\
+Redis      & 32   & 2   & 37   & 2   & 39   & 2   & 38  & 2   \\
+PyTorch    & 191  & 7   & 650  & 10  & 1227 & 24  & 655 & 9   \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -588,39 +592,39 @@ PyTorch    & 209  & 14  & 625  & 22  & 1159 & 30  & 686 & 83  \\
   \centering
   \includegraphics[width=\columnwidth]{fig1_pytorch_ttfr.pdf}
   \caption{PyTorch TTFR across restore modes. Fixed prefetch nearly doubles
-    TTFR; adaptive recovers to $686$\,ms. Dashed line: H1 threshold
+    TTFR; adaptive recovers to $655$\,ms. Dashed line: H1 threshold
     ($1000$\,ms).}
   \label{fig:pytorch_ttfr}
 \end{figure}
 
-\textbf{test\_loop.}\, Lazy restore is $21\times$ faster than full ($48$
-vs.\ $1020$\,ms). The active footprint at restore time is tiny: only stack
+\textbf{test\_loop.}\, Lazy restore is $24.5\times$ faster than full ($42$
+vs.\ $1019$\,ms). The active footprint at restore time is tiny: only stack
 and code pages are needed before the first response. All three lazy modes
-are statistically indistinguishable ($48, 48, 49$\,ms; all pairwise
-$|t|\!<\!0.5$), confirming prefetch has neither benefit nor harm on a small
+are statistically indistinguishable ($42, 43, 42$\,ms; all pairwise
+$|t|\!<\!1.1$), confirming prefetch has neither benefit nor harm on a small
 working set.
 
-\textbf{Redis.}\, Lazy restore is marginally slower than full ($46$ vs.\
+\textbf{Redis.}\, Lazy restore is marginally slower than full ($37$ vs.\
 $32$\,ms). Redis can respond before most pages are faulted in. Differences
 between lazy modes are not statistically significant
 (\S\ref{sec:significance}). All modes pass H1 comfortably.
 
 \textbf{PyTorch.}\, This workload exhibits the failure mode of fixed
-prefetch. Full restore completes in $209$\,ms. Lazy restore takes
-$625$\,ms because ResNet-18 weights ($\approx 15{,}000$ pages,
+prefetch. Full restore completes in $191$\,ms. Lazy restore takes
+$650$\,ms because ResNet-18 weights ($\approx 15{,}500$ pages,
 $\approx 61$\,MB) must all be paged in before the first inference. Fixed
-prefetch worsens TTFR to $1{,}159$\,ms---an $85\,\%$ regression over
-demand-only and $5.5\times$ over full restore---despite reducing page-fault
-count by $60\,\%$ ($15{,}743\!\to\!6{,}352$). The adaptive controller
-brings TTFR back to $686$\,ms ($-473$\,ms vs.\ fixed prefetch,
-$-41\,\%$), within $10\,\%$ of demand-only.
+prefetch worsens TTFR to $1{,}227$\,ms---an $88\,\%$ regression over
+demand-only and $6.4\times$ over full restore---despite reducing page-fault
+count by $85\,\%$ ($15{,}515\!\to\!2{,}322$). The adaptive controller
+brings TTFR back to $655$\,ms ($-572$\,ms vs.\ fixed prefetch,
+$-47\,\%$), within $1\,\%$ of demand-only.
 
 \begin{figure*}[t]
   \centering
   \includegraphics[width=0.78\textwidth]{fig2_ttfr_all.pdf}
-  \caption{TTFR by workload and restore mode. Lazy is $21\times$ faster
+  \caption{TTFR by workload and restore mode. Lazy is $24.5\times$ faster
     than full on test\_loop (small footprint), marginally slower on Redis,
-    $3\times$ slower on PyTorch (must page in full working set before
+    $3.4\times$ slower on PyTorch (must page in full working set before
     serving).}
   \label{fig:ttfr_all}
 \end{figure*}
@@ -633,14 +637,14 @@ inter-mode TTFR differences that drive our claims. Three results matter:
 
 \begin{enumerate}
 \item Fixed prefetch \emph{significantly degrades} PyTorch TTFR relative to
-demand-only lazy ($t\!=\!-39.6$, $p\!<\!10^{-9}$). The regression is not
+demand-only lazy ($t\!=\!-45.9$, $p\!<\!10^{-9}$). The regression is not
 noise.
 \item The adaptive controller \emph{significantly improves} PyTorch TTFR
-relative to fixed prefetch ($t\!=\!14.8$, $p\!<\!10^{-4}$). The recovery is
+relative to fixed prefetch ($t\!=\!46.1$, $p\!<\!10^{-9}$). The recovery is
 not noise.
 \item Adaptive TTFR is \emph{statistically indistinguishable} from
-demand-only lazy on PyTorch ($p\!=\!0.11$). The controller pays at most a
-modest, non-significant penalty for the probe windows.
+demand-only lazy on PyTorch ($t\!=\!-0.82$, $p\!=\!0.42$). The controller
+pays at most a modest, non-significant penalty for the probe windows.
 \end{enumerate}
 
 For Redis, no pairwise difference among the three lazy modes is significant
@@ -660,13 +664,13 @@ Significant at $\alpha\!=\!0.05$ marked $\star$.}
 \toprule
 Workload & Comparison & {$t$} & {df} & {$p$} \\
 \midrule
-PyTorch  & full vs.\ lazy            & -43.91 & 6.8 & ${<}10^{-9}\,\star$ \\
-PyTorch  & lazy vs.\ fixed           & -39.56 & 7.3 & ${<}10^{-9}\,\star$ \\
-PyTorch  & fixed vs.\ adaptive       & +14.79 & 5.0 & ${<}10^{-4}\,\star$ \\
-PyTorch  & lazy vs.\ adaptive        &  -1.95 & 4.6 & $0.11$              \\
-Redis    & lazy vs.\ fixed           &  +1.30 & 7.9 & $0.23$              \\
-Redis    & lazy vs.\ adaptive        &  +0.34 & 6.4 & $0.74$              \\
-Redis    & fixed vs.\ adaptive       &  -1.28 & 6.9 & $0.24$              \\
+PyTorch  & full vs.\ lazy            & -76.74 & 33.8 & ${<}10^{-9}\,\star$ \\
+PyTorch  & lazy vs.\ fixed           & -45.89 & 25.7 & ${<}10^{-9}\,\star$ \\
+PyTorch  & fixed vs.\ adaptive       & +46.10 & 24.5 & ${<}10^{-9}\,\star$ \\
+PyTorch  & lazy vs.\ adaptive        &  -0.82 & 37.6 & $0.42$              \\
+Redis    & lazy vs.\ fixed           &  -1.31 & 38.0 & $0.20$              \\
+Redis    & lazy vs.\ adaptive        &  -0.87 & 38.0 & $0.39$              \\
+Redis    & fixed vs.\ adaptive       &  +0.41 & 38.0 & $0.68$              \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -674,8 +678,8 @@ Redis    & fixed vs.\ adaptive       &  -1.28 & 6.9 & $0.24$              \\
 \subsection{The Fixed-Prefetch Paradox}
 \label{sec:paradox}
 
-Fixed prefetch on PyTorch reduces page faults by $60\,\%$ yet nearly
-doubles TTFR (Fig.~\ref{fig:faults_vs_ttfr}). The paradox is explained by
+Fixed prefetch on PyTorch reduces page faults by $85\,\%$ yet increases
+TTFR by $88\,\%$ (Fig.~\ref{fig:faults_vs_ttfr}). The paradox is explained by
 TCP channel dynamics. The prefetch worker generates a backlog of pending
 TCP reads on the secondary connection. Although this does not directly
 block the primary connection, it congests the page server's socket send
@@ -683,9 +687,9 @@ buffer, delaying responses on the primary connection. The effect manifests
 as growing queue depth $q$ and ultimately increases wall-clock time per
 fault.
 
-The $60\,\%$ fault reduction is real: fewer faults fire. But the remaining
-$40\,\%$ take longer to resolve because each resolution is delayed by
-congestion. The net effect is higher TTFR. This is structurally analogous
+The $85\,\%$ fault reduction is real: far fewer faults fire. But each
+surviving fault takes longer to resolve because its resolution is delayed by
+congestion, and the net effect is higher TTFR. The net effect is higher TTFR. This is structurally analogous
 to bufferbloat~\cite{gettys2011bufferbloat}: aggressive buffering masks
 backpressure that the producer should have observed, allowing the queue to
 grow to a point where latency dominates throughput gains. The same dynamic
@@ -702,7 +706,7 @@ could feed a future tighter feedback loop.
   \centering
   \includegraphics[width=0.78\textwidth]{fig4_faults_vs_ttfr.pdf}
   \caption{PyTorch page faults vs.\ TTFR. Fixed prefetch reduces faults
-    $60\,\%$ but nearly doubles TTFR. Fewer faults do not imply lower
+    $85\,\%$ but increases TTFR $88\,\%$. Fewer faults do not imply lower
     latency when prefetch congests the fault-path TCP channel.}
   \label{fig:faults_vs_ttfr}
 \end{figure*}
@@ -710,38 +714,36 @@ could feed a future tighter feedback loop.
 \subsection{Adaptive Controller Behavior}
 \label{sec:controller-eval}
 
-\textbf{PyTorch.}\, The controller observes $5$ control windows ($640$
-faults) before disabling prefetch (Table~\ref{tab:controller},
-Fig.~\ref{fig:timeline}). It progressively reduces window and stride before
-disabling at window $5$, when duplicate rate is $100\,\%$ and queue depth
-has grown to $3{,}796$.
+\textbf{PyTorch.}\, The controller disables prefetch in the \emph{first}
+control window (Table~\ref{tab:controller}, Fig.~\ref{fig:timeline}). After
+$128$ faults the duplicate rate is already $97\,\%$ and the async queue has
+grown to a depth of $1{,}454$, so the \textsc{disable} branch fires
+immediately and prefetch is held off for the $16$-window cooldown.
 
 \begin{table}[t]
 \centering
-\caption{PyTorch adaptive controller windows (iteration 1).}
+\caption{PyTorch adaptive controller, first decision window (iteration 1).
+The single window's signals already saturate both thresholds.}
 \label{tab:controller}
 \renewcommand{\arraystretch}{1.15}
 \small
-\begin{tabular}{c S[table-format=3.0] S[table-format=4.0] l}
+\begin{tabular}{c S[table-format=3.0] S[table-format=4.0] S[table-format=2.0] l}
 \toprule
-{Window} & {$\rho$ (\%)} & {$q$} & {Decision} \\
+{Window} & {dup (\%)} & {$q$} & {prefetched} & {Decision} \\
 \midrule
-1 & 100 & 2704 & on (reduce $W,S$) \\
-2 &  78 & 3288 & on (reduce $W,S$) \\
-3 & 100 & 3552 & on (reduce $W,S$) \\
-4 & 100 & 3714 & on (reduce $W,S$) \\
-5 & 100 & 3796 & \textbf{off}      \\
+1 & 97 & 1454 & 16 & \textbf{off (16-window cooldown)} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The adaptive mode's fault count ($15{,}888$) is within $1\,\%$ of
-demand-only ($15{,}743$), confirming the controller backed off almost
-completely after the probe windows.
+Because prefetch is disabled almost immediately, the adaptive mode's fault
+count ($15{,}496$) is within $1\,\%$ of demand-only ($15{,}515$),
+confirming the controller backs off before speculative traffic can
+accumulate the congestion that harms fixed prefetch.
 
-\textbf{Redis.}\, The controller disables prefetch in a single window:
-$94\,\%$ duplicate rate, queue depth $821$. Redis's access pattern is
-essentially random across $10{,}000$ keys; sequential prefetch predicts
+\textbf{Redis.}\, The controller likewise disables prefetch in a single
+window: $98\,\%$ duplicate rate, queue depth $541$. Redis's access pattern
+is essentially random across $10{,}000$ keys; sequential prefetch predicts
 nothing and every prefetch candidate is already served by the time the
 worker processes it.
 
@@ -749,9 +751,9 @@ worker processes it.
   \centering
   \includegraphics[width=0.78\textwidth]{fig5_adaptive_timeline.pdf}
   \caption{Adaptive controller decisions per $128$-fault window
-    (PyTorch, iteration 1). Duplicate rate stays at $100\,\%$ and queue
-    depth climbs across windows; the controller progressively reduces
-    window/stride before disabling at window $5$.}
+    (PyTorch, iteration 1). Duplicate rate is already $97\,\%$ with queue
+    depth $1{,}454$ in the first window, so the controller disables
+    prefetch immediately.}
   \label{fig:timeline}
 \end{figure*}
 
@@ -761,29 +763,51 @@ worker processes it.
 The thresholds $\dupthr\!=\!0.80$ and halve threshold $0.50$ were chosen
 by inspection of pilot traces, raising the legitimate concern that the
 controller is over-fit to its tuning data. Two observations push back.
-First, the in-paper traces (Table~\ref{tab:controller}) show $\rho$
-saturating at $78$--$100\,\%$ and $q$ exceeding $\qthr$ from window~1 on
-PyTorch, so the \textsc{disable} branch fires under \emph{any} disable
-threshold $\dupthr\!\in\![0.30, 0.78]$; the Redis trace
-($\rho\!=\!94\,\%$, $q\!=\!821$) disables under any $\dupthr\!<\!0.94$;
-\texttt{test\_loop} never approaches the thresholds and correctly leaves
-prefetch enabled. The duplicate-rate signal is either firmly above the
-largest plausible threshold (memory-heavy) or firmly below the smallest
-(memory-light), so the choice of $\dupthr$ within a wide middle range is
-largely cosmetic on these workloads.
-Second, to make this auditable rather than assertional, both thresholds
-are runtime-tunable through the environment variables
-\texttt{DISTRIPROC\_DUP\_\{DISABLE,HALVE\}\_PCT}, and the artifact ships a
-sweep harness (\texttt{eval/ablation\_thresholds.sh}) that runs the
-\texttt{lazy-adaptive} mode across five disable/halve pairs spanning
-aggressive ($30/10\,\%$) to permissive ($90/60\,\%$). We caution that a
-meaningful threshold sweep must be run on the same kernel that produces
-the regression being mitigated: as \S\ref{sec:limitations} reports, the
-fixed-prefetch regression itself is kernel-sensitive, and on a kernel
-where the regression is small there is correspondingly little for any
-threshold to recover. The harness is therefore provided as reproducibility
-tooling to be exercised on the evaluation kernel (Linux~$6.18.7$), not as
-a claim of an environment-independent optimum.
+First, the in-paper traces (Table~\ref{tab:controller}) show the duplicate
+rate already at $97\,\%$ with $q\!=\!1454$ in the first PyTorch window, so
+the \textsc{disable} branch fires under \emph{any} disable threshold
+$\dupthr\!<\!0.97$; the Redis trace ($\mathit{dup}\!=\!98\,\%$,
+$q\!=\!541$) disables under any $\dupthr\!<\!0.98$; \texttt{test\_loop}
+never approaches the thresholds and correctly leaves prefetch enabled. The
+duplicate-rate signal is either firmly above the largest plausible
+threshold (memory-heavy) or firmly below the smallest (memory-light), so
+the choice of $\dupthr$ within a wide middle range is largely cosmetic on
+these workloads.
+Second, we confirm this directly with a sweep over five disable/halve
+pairs spanning aggressive ($30/10\,\%$) to permissive ($90/60\,\%$), each
+run for $n\!=\!5$ on PyTorch via the harness
+\texttt{eval/ablation\_thresholds.sh}, with the thresholds set through the
+environment variables \texttt{DISTRIPROC\_DUP\_\{DISABLE,HALVE\}\_PCT}.
+Mean adaptive TTFR is flat across the entire range
+(Table~\ref{tab:ablation}): $628$--$637$\,ms, with every setting
+statistically indistinguishable from the default
+($|t|\!<\!1.4$, all $p\!>\!0.2$) and all within noise of demand-only lazy.
+There is no sharp cliff---the controller is insensitive to the exact
+threshold because the duplicate-rate signal is bimodal across our
+workloads. (Because the regression itself is kernel-sensitive
+(\S\ref{sec:limitations}), this sweep is only meaningful on the evaluation
+kernel, Linux~$6.18.7$.)
+
+\begin{table}[t]
+\centering
+\caption{Threshold ablation on PyTorch, $n\!=\!5$ per row. Disable/halve
+are duplicate-rate percentages. TTFR is flat across the full range; the
+$80/50$ default is marked $^\star$.}
+\label{tab:ablation}
+\renewcommand{\arraystretch}{1.15}
+\small
+\begin{tabular}{c S[table-format=3.0] @{\,$\pm$\,} S[table-format=2.0] S[table-format=+1.2]}
+\toprule
+{Disable / halve (\%)} & \multicolumn{2}{c}{Mean TTFR (ms)} & {$t$ vs.\ default} \\
+\midrule
+30 / 10        & 634 & 20 & -0.31 \\
+50 / 20        & 628 &  9 & -1.32 \\
+70 / 40        & 630 &  3 & -1.15 \\
+80 / 50$^\star$ & 637 & 16 &  0.00 \\
+90 / 60        & 630 & 14 & -0.88 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Throughput}
 
@@ -798,56 +822,68 @@ a claim of an environment-independent optimum.
 Workload & Full & Lazy & Fixed & Adaptive \\
 \midrule
 test\_loop & 1\,op/s   & $100\,\%$ & $100\,\%$ & $100\,\%$ \\
-Redis      & $107{,}146$ & $68\,\%$  & $66\,\%$  & $69\,\%$  \\
-PyTorch    & 84\,inf/s & $100\,\%$ & $97\,\%$  & $94\,\%$  \\
+Redis      & $105{,}050$ & $84\,\%$  & $84\,\%$  & $85\,\%$  \\
+PyTorch    & 71\,inf/s & $103\,\%$ & $103\,\%$  & $102\,\%$  \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-All lazy modes achieve $\geq 94\,\%$ of full restore throughput on PyTorch
-and test\_loop. Redis lazy modes reach $68$--$69\,\%$, reflecting TCP
-transport overhead: random GET operations touch pages across the working
-set, each requiring a TCP round-trip. All lazy modes show roughly equal
-Redis throughput, confirming this is a transport limitation, not a policy
-effect.
+On PyTorch and test\_loop all lazy modes match full-restore throughput
+(within noise) once pages are local. Redis lazy modes reach
+$84$--$85\,\%$, reflecting TCP transport overhead: random GET operations
+touch pages across the working set, each requiring a TCP round-trip. All
+lazy modes show roughly equal Redis throughput, confirming this is a
+transport limitation, not a policy effect.
 
 \textbf{PyTorch throughput caveat.}\, Throughput is measured on the
 restored process after the post-restore phase concludes. All modes
-converge once pages are local; the numbers ($79$--$84$ inferences/sec)
-reflect CPU-bound inference speed, not transport behavior.
+converge once pages are local; the numbers ($71$--$74$ inferences/sec)
+reflect CPU-bound inference speed, not transport behavior, and the small
+spread across modes is run-to-run noise.
 
 \subsection{Prefetch Volume Reduction}
 \label{sec:prefvol}
 
 \begin{table}[t]
 \centering
-\caption{Mean prefetch volume per restore session.}
+\caption{Mean prefetch volume (pages) per restore session.}
 \label{tab:prefetch}
 \renewcommand{\arraystretch}{1.15}
 \small
-\begin{tabular}{l S[table-format=5.0] S[table-format=5.0] r}
+\begin{tabular}{l S[table-format=4.0] S[table-format=4.0] r}
 \toprule
-{Workload} & {Fixed} & {Adaptive} & {Reduction} \\
+{Workload} & {Fixed} & {Adaptive} & {Change} \\
 \midrule
-test\_loop & 76    & 32    & $-58\,\%$ \\
-Redis      & 1579  & 874   & $-45\,\%$ \\
-PyTorch    & 2121  & 1695  & $-20\,\%$ \\
+test\_loop & 76    & 35    & $-55\,\%$ \\
+Redis      & 1255  & 602   & $-52\,\%$ \\
+PyTorch    & 788   & 1466  & $+86\,\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The adaptive controller reduces prefetch volume on all three workloads
-(Fig.~\ref{fig:prefetch_vol}), even on test\_loop where fixed prefetch
-causes no measurable harm. The PyTorch reduction is smaller
-($-20\,\%$) because most prefetch volume occurs in the early probe
-windows before the controller disables.
+On the memory-light workloads the adaptive controller sharply reduces
+prefetch volume (Fig.~\ref{fig:prefetch_vol}): $-55\,\%$ on test\_loop and
+$-52\,\%$ on Redis, because it disables prefetch within the first window
+and the workloads finish before the cooldown expires. PyTorch is the
+opposite case and deserves emphasis: the controller disables prefetch
+immediately (Table~\ref{tab:controller}), but the workload runs long
+enough that the $16$-window cooldown expires and prefetch re-enables. By
+then the initial fault storm---and the congestion it caused---has passed,
+so the re-enabled windows prefetch freely and aggregate volume actually
+\emph{exceeds} fixed prefetch ($+86\,\%$). Crucially, this extra
+speculation no longer harms TTFR (adaptive is within $5.5$\,ms of
+demand-only), because it occurs after the latency-critical phase. The
+controller's value on the memory-heavy workload is therefore TTFR
+recovery, not volume reduction; volume reduction is a separate benefit
+realized on workloads where prefetch was cheap to begin with.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{fig3_prefetch_volume.pdf}
-  \caption{Prefetch volume per restore session. Adaptive cuts volume
-    $20$--$58\,\%$ across workloads with negligible TTFR penalty on
-    test\_loop and Redis.}
+  \caption{Prefetch volume per restore session. Adaptive cuts volume on
+    test\_loop ($-55\,\%$) and Redis ($-52\,\%$); on PyTorch it issues
+    more speculative fetches after the cooldown expires, once the
+    latency-critical phase is over.}
   \label{fig:prefetch_vol}
 \end{figure}
 
@@ -859,22 +895,24 @@ windows before the controller disables.
 most beneficial for processes that can satisfy their first requests using
 a small fraction of their address space. For test\_loop, TTFR is determined
 by kernel restore overhead and a handful of pages, and lazy restore
-eliminates the page-copy phase entirely ($21\times$ speedup). For PyTorch
+eliminates the page-copy phase entirely ($24.5\times$ speedup). For PyTorch
 inference, the process cannot serve its first request until all
-$\approx 15{,}000$ model weight pages are local, and lazy restore imposes
-a $3\times$ TTFR overhead relative to full restore. This workload
+$\approx 15{,}500$ model weight pages are local, and lazy restore imposes
+a $3.4\times$ TTFR overhead relative to full restore. This workload
 dependence is fundamental; we do not claim lazy restore universally reduces
 TTFR.
 
-\textbf{Why adaptive recovers but does not fully match lazy.}\, On PyTorch,
-adaptive mode ($686$\,ms) is $61$\,ms above demand-only lazy ($625$\,ms),
-a gap that is not statistically significant ($p\!=\!0.11$) but is visible
-in the means. The gap comes from probe windows before the controller
-disables prefetch: during $5\!\times\!128\!=\!640$ faults, the prefetch
-worker is active and building queue depth, adding latency. A more
-aggressive threshold would disable prefetch sooner at the cost of false
-positives. The current threshold is conservative; tuning it is left as
-future work.
+\textbf{Adaptive recovers essentially all of the regression.}\, On PyTorch,
+adaptive mode ($655$\,ms) sits just $5.5$\,ms above demand-only lazy
+($650$\,ms), a gap that is not statistically significant
+($t\!=\!-0.82$, $p\!=\!0.42$, $n\!=\!20$): the two are indistinguishable.
+Because the controller disables prefetch in the very first control window
+(Table~\ref{tab:controller}), only $128$ faults' worth of speculative
+traffic is ever issued before back-off, so almost none of the
+fixed-prefetch congestion is incurred. The conservative default threshold
+is already aggressive enough to capture the recovery; the ablation
+(\S\ref{sec:sensitivity}) shows tightening it further yields no measurable
+gain.
 
 \textbf{Duplicate pressure as an adaptive signal.}\, Duplicate pressure is
 effective because it directly measures wasted work without requiring
@@ -883,9 +921,10 @@ prefetch worker is fetching pages the fault path has already resolved---
 the workload is accessing memory in an order the sequential policy did not
 predict. Queue depth amplifies this signal: even moderate duplicate
 pressure becomes harmful when the queue is large, because queued-but-
-useless requests occupy TCP bandwidth. The combination handles both
-fast-saturating workloads (Redis: single window, immediate disable) and
-slow-to-saturate ones (PyTorch: $5$ windows, progressive reduction).
+useless requests occupy TCP bandwidth. On both memory-heavy workloads the
+combination saturates within the first $128$-fault window and the
+controller disables immediately (PyTorch: $97\,\%$ duplicate, $q\!=\!1454$;
+Redis: $98\,\%$, $q\!=\!541$).
 
 \textbf{Deployment guidance.}\, For operators considering CRIU lazy restore
 in production, our measurements suggest three operational rules. First,
@@ -987,14 +1026,16 @@ $ cd DistriProc && make bench-paper
 \fi
 
 \noindent The artifact pins the configuration that produced
-Tables~\ref{tab:ttfr}--\ref{tab:prefetch}: $n\!=\!5$ iterations across all
-three workloads $\times$ four modes ($60$ runs total), random seeds fixed
+Tables~\ref{tab:ttfr}--\ref{tab:prefetch}: $n\!=\!20$ iterations across all
+three workloads $\times$ four modes ($240$ runs total), random seeds fixed
 where applicable, output written to \texttt{eval/results/results.csv} with
 per-iteration log files in \texttt{eval/results/logs/}.
 The exact commit producing the results in this paper is
-\texttt{97caf28}. Build environment: Linux $6.18.7$, CRIU $4.2$,
-\texttt{gcc} $13.x$, Python $3.13$, PyTorch $2.x$ (CPU). Hardware:
-AMD Ryzen 7 7735HS / $15$\,GB RAM.
+\texttt{0aad7ba}. Build environment: mainline Linux $6.18.7$, CRIU $4.2$,
+\texttt{gcc} $15.x$, Python $3.14$, PyTorch $2.12$ (CPU). Hardware:
+AMD Ryzen 7 7735HS / $15$\,GB RAM. The kernel version is load-bearing:
+the fixed-prefetch regression does not reproduce on Linux $7.0.x$
+(\S\ref{sec:limitations}).
 Statistical post-processing (CIs in Table~\ref{tab:ttfr}, $t$-tests in
 Table~\ref{tab:ttest}) is reproducible from \texttt{results.csv} with
 standard Welch's procedure; no external scripts required.
@@ -1005,11 +1046,12 @@ standard Welch's procedure; no external scripts required.
 
 We organize the threats to validity as follows. \emph{Construct validity}:
 the PyTorch throughput measurement does not capture the remote-memory phase
-(below). \emph{Internal validity}: the small sample ($n\!=\!5$) bounds the
-effect sizes we can resolve. \emph{External validity}: loopback transport, a
-single host, a single CPU architecture, and---most consequentially---a single
-kernel version constrain how far the results generalize. Each is treated in
-turn.
+(below). \emph{Internal validity}: at $n\!=\!20$ the headline effects are
+resolved with wide margins, but very small differences (e.g.\ the $5.5$\,ms
+adaptive-vs-lazy gap) remain below our resolution. \emph{External validity}:
+loopback transport, a single host, a single CPU architecture, and---most
+consequentially---a single kernel version constrain how far the results
+generalize. Each is treated in turn.
 
 \textbf{Transport.}\, All experiments use TCP loopback. RDMA would reduce
 per-page RTT from $\approx 10\,\mu$s to $\approx 1$--$2\,\mu$s, changing
@@ -1058,11 +1100,13 @@ deployment kernel. We regard this kernel-conditionality as a result in
 its own right rather than a confound, and a full cross-kernel
 characterization is future work.
 
-\textbf{Sample size.}\, $n\!=\!5$ is small. The effect sizes we report
-(${>}80\,\%$ TTFR change for fixed prefetch on PyTorch) are large enough
-to yield $p\!<\!10^{-4}$ at this $n$, but smaller effects (e.g., the
-$61$\,ms adaptive-vs-lazy PyTorch gap) cannot be ruled out with this
-sample.
+\textbf{Sample size.}\, We run $n\!=\!20$ iterations per configuration.
+The headline effects ($88\,\%$ TTFR change for fixed prefetch on PyTorch)
+yield $p\!<\!10^{-9}$ with tight confidence intervals, and the
+adaptive-vs-lazy comparison is firmly non-significant ($p\!=\!0.42$). The
+residual $5.5$\,ms mean gap is below the resolution of this sample and we
+do not claim it is real. We have not characterized tail behavior (e.g.\
+$p99$ TTFR), which would need substantially more iterations.
 
 % ── 10. Future Work ─────────────────────────────────────────────────────────
 \section{Future Work}
@@ -1206,7 +1250,7 @@ Welch--Satterthwaite formula
   \label{eq:welch-df}
 \end{equation}
 which is what produces the non-integer $\textit{df}$ values reported in
-Table~\ref{tab:ttest} (e.g.\ $\textit{df}\!=\!6.8$ for the
+Table~\ref{tab:ttest} (e.g.\ $\textit{df}\!=\!33.8$ for the
 full~vs.~lazy comparison on PyTorch).
 The $95\,\%$ confidence intervals in Table~\ref{tab:ttfr} are the standard
 $t$-distribution intervals,
@@ -1215,7 +1259,7 @@ $t$-distribution intervals,
   \bar{X} \;\pm\; t_{0.025,\,n-1}\,\frac{s}{\sqrt{n}},
   \label{eq:ci}
 \end{equation}
-with $n\!=\!5$ and $t_{0.025,4}\!=\!2.776$. For $p$-values we use a
+with $n\!=\!20$ and $t_{0.025,19}\!=\!2.093$. For $p$-values we use a
 two-tailed test against the null $\mathbb{E}[X]\!=\!\mathbb{E}[Y]$. With
 $n_1\!=\!n_2\!=\!5$ the smallest detectable difference at $\alpha\!=\!0.05$
 is roughly $1.6\,\sigma_{\textit{pool}}/\sqrt{5}$, i.e.\ effects below that
@@ -1229,27 +1273,26 @@ in \S\ref{sec:limitations}.
 
 To make the abstract model concrete, we instantiate
 Eqs.~\eqref{eq:tlazy}--\eqref{eq:condition} with the measured PyTorch
-numbers. Profiling the lazy (demand-only) run gives $F\!\approx\!15{,}743$
-unique pages and $b\!\approx\!25{,}000$~pages/s sustained on the secondary
-TCP connection, with measured per-page round trip $r\!\approx\!40\,\mu$s
+numbers. Profiling the lazy (demand-only) run gives $F\!\approx\!15{,}515$
+unique pages and $b\!\approx\!24{,}000$~pages/s sustained on the secondary
+TCP connection, with measured per-page round trip $r\!\approx\!42\,\mu$s
 on loopback. Substituting into Eq.~\eqref{eq:tlazy},
 \begin{equation}
-  T_\textit{lazy} \;\approx\; 15{,}743 \times 40\,\mu\text{s} \;\approx\; 630\,\text{ms},
+  T_\textit{lazy} \;\approx\; 15{,}515 \times 42\,\mu\text{s} \;\approx\; 652\,\text{ms},
   \label{eq:tlazy-num}
 \end{equation}
-which is within $1\,\%$ of the measured mean $625$\,ms reported in
-Table~\ref{tab:ttfr}. For the fixed-prefetch run with $S\!=\!8$ and
-observed duplicate rate saturating near $\delta\!\approx\!1$ in steady
-state (Table~\ref{tab:controller}, all but window~2), the per-fault offered
-load $(1\!+\!S(1{-}\delta))/b$ briefly drops near $r$, but during the
-ramp-up phase (windows~1--3) $\delta\!<\!0.8$ and the offered load is
-roughly $5r$, pushing the channel into the saturated regime of
-Eq.~\eqref{eq:tprefetch}. This is the regime in which our measured TTFR
-($1{,}159$\,ms) overshoots $T_\textit{lazy}$ by $\sim 530$\,ms, in
-quantitative agreement with the model's prediction once
-$\rho_{\!\textit{link}}\!\to\!1$. The adaptive controller intervenes
-before $\rho_{\!\textit{link}}$ stays pinned, recovering the
-$T_\textit{lazy}$ regime to within $61$\,ms.
+which is within $1\,\%$ of the measured mean $650$\,ms reported in
+Table~\ref{tab:ttfr}. For the fixed-prefetch run with $S\!=\!8$, the
+duplicate rate climbs to $97\,\%$ within the first window
+(Table~\ref{tab:controller}): the sequential policy mispredicts the
+weight-access order, so the per-fault offered load
+$(1\!+\!S(1{-}\delta))/b$ is roughly $5r$ during the fault storm, pushing
+the channel into the saturated regime of Eq.~\eqref{eq:tprefetch}. This is
+the regime in which our measured fixed-prefetch TTFR ($1{,}227$\,ms)
+overshoots $T_\textit{lazy}$ by $\sim 577$\,ms, in qualitative agreement
+with the model once $\rho_{\!\textit{link}}\!\to\!1$. The adaptive
+controller disables prefetch before $\rho_{\!\textit{link}}$ stays pinned,
+recovering the $T_\textit{lazy}$ regime to within $5.5$\,ms.
 
 \section{Notation Used in the Cost Model}
 \label{app:notation}
@@ -1329,7 +1372,7 @@ used to produce Figs.~\ref{fig:pytorch_ttfr}--\ref{fig:prefetch_vol}---is
 publicly available at
 \url{https://github.com/kernex-sbs/DistriProc} under a permissive licence.
 The exact commit that produced the numbers reported in this paper is
-\texttt{97caf28}. All tables in this paper can be regenerated from
+\texttt{0aad7ba}. All tables in this paper can be regenerated from
 \texttt{eval/results/results.csv} with standard Welch's procedure; no
 external scripts or proprietary data are required.
 
