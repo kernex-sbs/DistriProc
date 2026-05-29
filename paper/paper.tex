@@ -131,31 +131,33 @@ policy unspecified: should the runtime fetch additional pages speculatively,
 and how many?
 This paper presents an empirical characterization of how fixed sequential
 prefetch interacts with CRIU lazy restore in the post-restore remote-memory
-phase. We show that a policy widely assumed to be beneficial in fact
-\emph{increases} TTFR by $88\,\%$ for memory-heavy workloads, because
-speculative traffic congests the TCP channel shared with fault resolution;
-critically, fault count drops $85\,\%$ even as latency worsens, so fault
-reduction is not a reliable proxy for TTFR. As a practical mitigation we
-introduce \distriproc, a userspace runtime whose feedback-driven controller
-monitors duplicate-fetch pressure and async queue depth within a sliding
-window of page faults and disables prefetch when those signals indicate
-congestion. On three workloads---a synthetic loop, Redis with a
-10{,}000-key dataset, and PyTorch ResNet-18 inference ($n=20$)---the
-controller recovers essentially all of the regression introduced by fixed
-prefetch ($1{,}227 \to 655$\,ms; $-47\,\%$, Welch $t = 46.1$,
-$p < 10^{-9}$), returning TTFR to within $5.5$\,ms of demand-only lazy
-($p = 0.42$---statistically indistinguishable). On the memory-light
-workloads it also cuts prefetch volume by $52$--$55\,\%$; on the
-memory-heavy workload it instead issues more speculative fetches across
-probe windows yet still recovers TTFR, so its benefit there is latency
-rather than volume. We frame the contribution as a measurement study of
-prefetch behavior in post-restore remote memory, with the controller as
-one workable mitigation rather than a claim of algorithmic novelty.
+phase, and shows that whether prefetch helps or hurts is governed by one
+variable: round-trip time (RTT). At loopback RTT, fixed prefetch
+\emph{increases} memory-heavy TTFR by $88\,\%$ ($650\!\to\!1{,}227$\,ms,
+$n\!=\!20$) because speculative traffic congests the TCP channel shared with
+fault resolution---even as it cuts the fault count by $85\,\%$, so fault
+reduction is not a reliable proxy for TTFR. By injecting RTT with
+\texttt{netem} we locate a crossover near $\approx\!125\,\mu$s RTT: below it
+the channel is congestion-bound and prefetch is harmful; above it the
+channel is latency-bound and prefetch instead \emph{reduces} TTFR (by
+$37\,\%$ at $1$\,ms RTT, where demand-only lazy serializes thousands of
+round trips). We then present \distriproc, a userspace runtime whose
+feedback controller monitors duplicate-fetch pressure and queue depth and
+disables prefetch under congestion. In the congestion-bound regime the
+controller recovers essentially all of the loopback regression
+($1{,}227\!\to\!655$\,ms; Welch $t\!=\!46.1$, $p<10^{-9}$; within $5.5$\,ms
+of demand-only, $p\!=\!0.42$); above the crossover, where prefetch is
+beneficial, its disable policy is conservative and leaves $10$--$20\,\%$
+unclaimed, motivating an RTT-aware controller. We frame the contribution as
+a measurement study of \emph{when} speculative prefetch helps post-restore,
+with the controller as one workable point in that space rather than a claim
+of algorithmic novelty.
 \end{abstract}
 
 \begin{IEEEkeywords}
 checkpoint/restore, lazy restore, userfaultfd, remote memory, adaptive
-prefetch, CRIU, live migration, time-to-first-request
+prefetch, CRIU, live migration, time-to-first-request, round-trip time,
+network latency
 \end{IEEEkeywords}
 
 % ── 1. Introduction ──────────────────────────────────────────────────────────
@@ -184,14 +186,19 @@ signals and switches between these behaviors based on observed conditions.
 Prior deployments of CRIU lazy restore~\cite{criu-lazy, runc-lazy} have not
 systematically studied the policy question; the literature has tended to
 treat sequential prefetch as a uniformly beneficial default. The central
-empirical finding of this paper is that this assumption is wrong in a
-specific and measurable way: under post-restore conditions, speculative
-prefetch competes with fault-path traffic over the same TCP connection,
-builds an async queue backlog, and delays synchronous fault resolution,
-increasing TTFR by $88\,\%$ on workloads with large working sets (Welch
-$t = -45.9$, $p < 10^{-9}$, $n = 20$). Strikingly, this regression coincides
-with an $85\,\%$ \emph{reduction} in page faults, so the conventional proxy
-metric points the opposite direction of the observed latency.
+empirical finding of this paper is that prefetch is neither uniformly
+beneficial nor uniformly harmful---its sign is set by round-trip time. At
+loopback RTT, speculative prefetch competes with fault-path traffic over the
+shared TCP channel, builds an async queue backlog, and delays synchronous
+fault resolution, increasing TTFR by $88\,\%$ on large-working-set workloads
+(Welch $t = -45.9$, $p < 10^{-9}$, $n = 20$)---while \emph{reducing} page
+faults by $85\,\%$, so the conventional proxy metric points opposite to the
+observed latency. But this regime is bounded: injecting RTT with
+\texttt{netem} reveals a crossover near $\approx\!125\,\mu$s RTT, above
+which prefetch's latency-hiding dominates its congestion cost and prefetch
+\emph{reduces} TTFR (by $37\,\%$ at $1$\,ms RTT). The paradox is thus a
+property of the congestion-bound, near-zero-RTT regime, not of prefetch in
+general.
 
 \smallskip
 \noindent\textbf{Framing.}\, We position this work as a
@@ -201,34 +208,37 @@ present is a heuristic feedback loop in the tradition of TCP congestion
 control and adaptive paging; we do not claim algorithmic novelty for it.
 The novelty lies in (a)~the empirical characterization of the
 fixed-prefetch TTFR paradox, which to our knowledge has not been reported
-for CRIU lazy restore, and (b)~the demonstration that the paradox is
-mitigable in userspace using only locally observable signals, without
-kernel changes or RDMA.
+for CRIU lazy restore; (b)~the identification of an RTT crossover that
+bounds the paradox and flips prefetch from harmful to beneficial; and
+(c)~the demonstration that the harmful regime is mitigable in userspace
+using only locally observable signals, without kernel changes or RDMA.
 
 \smallskip
 \noindent\textbf{Contributions.}\, This paper makes four contributions:
 
 \begin{itemize}
-\item \emph{Empirical paradox.} We show that fixed sequential prefetch
-increases PyTorch TTFR by $88\,\%$ ($650 \to 1{,}227$\,ms) while
-reducing page faults by $85\,\%$---establishing that fault reduction is
-not a reliable proxy for latency improvement under post-restore remote
+\item \emph{Empirical paradox.} We show that at loopback RTT fixed
+sequential prefetch increases PyTorch TTFR by $88\,\%$
+($650 \to 1{,}227$\,ms) while reducing page faults by $85\,\%$---fault
+reduction is not a reliable proxy for latency under post-restore remote
 memory (\S\ref{sec:paradox}).
 
-\item \emph{TTFR regime characterization.} We show that lazy restore
-delivers a $24.5\times$ TTFR reduction for memory-light workloads but that
-this benefit inverts for memory-heavy workloads, where the process must
-page in its full working set before serving its first request
-(\S\ref{sec:eval}).
+\item \emph{RTT crossover.} By injecting RTT with \texttt{netem} we locate
+a crossover near $\approx\!125\,\mu$s RTT: below it prefetch is harmful
+(congestion-bound), above it prefetch reduces TTFR (latency-bound,
+$-37\,\%$ at $1$\,ms; demand-only lazy even times out at $2$\,ms). This
+maps \emph{when} speculative prefetch helps post-restore
+(\S\ref{sec:crosshost}). We also confirm a $24.5\times$ lazy-vs-full TTFR
+reduction for memory-light workloads (\S\ref{sec:eval}).
 
 \item \emph{Mitigation in userspace.} We design a feedback controller
-that uses duplicate-fetch pressure and async queue depth as lightweight
-signals within a 128-fault sliding window. The controller recovers
-$572$\,ms of the regression introduced by fixed prefetch, returning TTFR
-to within $5.5$\,ms of demand-only lazy ($p = 0.42$, $n = 20$), and cuts
-prefetch volume $52$--$55\,\%$ on the memory-light workloads
-(\S\ref{sec:controller-eval}). It is a workable mitigation, not a claim
-of algorithmic novelty.
+(duplicate-fetch pressure + queue depth, $128$-fault window) that in the
+congestion-bound regime recovers $572$\,ms of the fixed-prefetch
+regression---within $5.5$\,ms of demand-only lazy ($p = 0.42$, $n = 20$)---
+and cuts prefetch volume $52$--$55\,\%$ on memory-light workloads. Above
+the crossover it conservatively tracks lazy, leaving $10$--$20\,\%$
+unclaimed and motivating RTT-awareness (\S\ref{sec:controller-eval}). It is
+a workable mitigation, not a claim of algorithmic novelty.
 
 \item \emph{Reproducible artifact.} We release \distriproc as an
 open-source userspace daemon (${\sim}1{,}200$ lines of C and
@@ -237,10 +247,10 @@ reproduce every result in this paper from a single command
 (\S\ref{sec:repro}).
 \end{itemize}
 
-All experiments use a TCP loopback page server. RDMA, writable
-remote-memory coherence, and multi-node distribution are out of scope; the
-loopback setting deliberately isolates prefetch policy from cross-host
-network variance, and we discuss its implications in \S\ref{sec:limitations}.
+The baseline experiments use a TCP loopback page server; we then inject RTT
+to characterize the network-latency axis directly (\S\ref{sec:crosshost}).
+RDMA, writable remote-memory coherence, and multi-node distribution are out
+of scope (\S\ref{sec:limitations}).
 
 % ── 2. Background ────────────────────────────────────────────────────────────
 \section{Background and Motivation}
@@ -897,6 +907,85 @@ realized on workloads where prefetch was cheap to begin with.
   \label{fig:prefetch_vol}
 \end{figure}
 
+\subsection{Cross-Host RTT Sensitivity}
+\label{sec:crosshost}
+
+The results so far use a loopback page server, which is the best case for the
+fault path and the worst case for prefetch: with near-zero RTT, demand-only
+lazy pays almost nothing per fault, so speculative traffic can only add
+congestion. To test whether the paradox survives real network latency, we
+inject RTT on the page-transfer path with \texttt{tc netem} on the loopback
+interface and re-run the PyTorch matrix at each setting ($n\!=\!10$). The
+injection affects only IP traffic, so the CRIU control socket (AF\_UNIX) is
+untouched and \texttt{full} restore (no page server) is an RTT-independent
+reference. This is emulated latency on one host---a true two-machine
+deployment remains future work (\S\ref{sec:limitations})---but it exercises
+the real TCP stack under non-trivial delay.
+
+The effect of prefetch \emph{reverses} with RTT
+(Fig.~\ref{fig:crosshost}, Table~\ref{tab:crosshost}). There is a crossover
+near $\approx\!125\,\mu$s RTT:
+
+\begin{itemize}
+\item \textbf{Below the crossover (congestion-bound).} Demand-only lazy is
+cheap per fault, and fixed prefetch is harmful---$+91\,\%$ at loopback,
+$+42\,\%$ at $60\,\mu$s RTT. This is the regime the rest of the paper
+studies, and the one the controller is designed for.
+
+\item \textbf{Above the crossover (latency-bound).} Each demand fault now
+pays a full RTT serially, so lazy degrades steeply ($16{,}700$\,ms at
+$1$\,ms RTT; it fails to complete within our timeout at $2$\,ms). Fixed
+prefetch hides this latency by overlapping transfers and \emph{wins}:
+$-37\,\%$ vs.\ lazy at $1$\,ms RTT.
+\end{itemize}
+
+The adaptive controller tracks demand-only lazy across the whole range,
+because its duplicate/queue signals fire and disable prefetch regardless of
+RTT. This is exactly right below the crossover but conservative above it:
+at $300\,\mu$s--$1$\,ms RTT the controller leaves the $10$--$20\,\%$ that
+fixed prefetch would have captured on the table, and at $2$\,ms its
+lazy-tracking is actively worse than leaving prefetch on ($16{,}409$ vs.\
+$12{,}807$\,ms). The controller's signals detect \emph{congestion} but not
+its \emph{absence of alternative}: when serial demand paging is even slower,
+wasteful-looking prefetch is still the better choice. An RTT-aware policy
+that consults the measured crossover before disabling is the natural next
+step (\S\ref{sec:future}).
+
+\begin{table}[t]
+\centering
+\caption{PyTorch TTFR (ms) vs.\ injected RTT, $n\!=\!10$. Prefetch flips
+from harmful to beneficial near $125\,\mu$s. ``DNF'': demand-only lazy did
+not complete within the timeout.}
+\label{tab:crosshost}
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{4pt}
+\small
+\begin{tabular}{r r r r r}
+\toprule
+RTT ($\mu$s) & Lazy & Fixed & Adaptive & Fixed vs.\ Lazy \\
+\midrule
+0 (loopback) & 626   & 1198  & 640   & $+91\,\%$ \\
+60           & 1649  & 2346  & 1642  & $+42\,\%$ \\
+100          & 2300  & 2455  & 2230  & $+7\,\%$  \\
+150          & 3126  & 2919  & 3208  & $-7\,\%$  \\
+300          & 5850  & 4896  & 5263  & $-16\,\%$ \\
+1000         & 16700 & 10462 & 10906 & $-37\,\%$ \\
+2000         & {DNF} & 12807 & 16409 & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{fig6_crosshost_rtt.pdf}
+  \caption{PyTorch TTFR vs.\ injected RTT (log--log). Fixed prefetch is
+    harmful in the congestion-bound regime (left of the band) and beneficial
+    in the latency-bound regime (right). The adaptive controller tracks
+    demand-only lazy throughout---optimal below the crossover, conservative
+    above it.}
+  \label{fig:crosshost}
+\end{figure}
+
 % ── 6. Discussion ────────────────────────────────────────────────────────────
 \section{Discussion}
 \label{sec:discussion}
@@ -1064,11 +1153,23 @@ loopback transport, a single host, a single CPU architecture, and---most
 consequentially---a single kernel version constrain how far the results
 generalize. Each is treated in turn.
 
-\textbf{Transport.}\, All experiments use TCP loopback. RDMA would reduce
-per-page RTT from $\approx 10\,\mu$s to $\approx 1$--$2\,\mu$s, changing
-absolute TTFR numbers and likely reducing the congestion effect that makes
-fixed prefetch harmful. Whether the adaptive controller remains necessary
-under RDMA is an open question we plan to revisit on real hardware.
+\textbf{Transport and RTT.}\, The baseline page server is TCP loopback;
+\S\ref{sec:crosshost} then injects RTT with \texttt{netem} to characterize
+the latency axis directly, locating the crossover near $\approx\!125\,\mu$s
+where prefetch flips from harmful to beneficial. Two caveats remain. The RTT
+is emulated on a single host, not measured between two physical machines, so
+it captures added latency but not real cross-host bandwidth contention or
+NIC behavior. And we did not evaluate RDMA, whose $\approx\!1$--$2\,\mu$s
+RTT sits deep in the congestion-bound regime where the controller applies;
+confirming this on RDMA hardware is future work.
+
+\textbf{Controller is not RTT-aware.}\, The controller disables prefetch on
+congestion signals alone, so above the crossover it conservatively tracks
+demand-only lazy and forgoes the $10$--$20\,\%$ that prefetch would gain
+(\S\ref{sec:crosshost}); at $2$\,ms RTT this makes it slower than fixed
+prefetch. The fix---gating the disable decision on a measured RTT estimate
+relative to the crossover---is sketched in \S\ref{sec:future} but not
+implemented or evaluated here.
 
 \textbf{Writable coherence.}\, \distriproc does not implement write-back or
 write-through to the page server. Pages installed via
@@ -1125,13 +1226,19 @@ $p99$ TTFR), which would need substantially more iterations.
 
 Several directions follow naturally from the present work.
 
-\textbf{RDMA transport.}\, Repeating the experiments over an RDMA-backed
-page server would test whether the congestion-driven harm we observe
-under TCP persists at $\mu$s-scale RTTs. We expect the relative cost of
-each duplicate prefetch to shrink, raising both thresholds, but the
-qualitative effect---an aggressive sequential policy paying for itself in
-queue delay---should remain whenever the speculative load saturates the
-link.
+\textbf{RTT-aware controller.}\, The most direct follow-up is to make the
+disable decision RTT-aware. \S\ref{sec:crosshost} shows a crossover near
+$\approx\!125\,\mu$s below which prefetch should be throttled and above
+which it should be encouraged. The handler can estimate RTT cheaply from
+its own fault round-trips and gate the congestion-driven disable on whether
+the estimate sits below the crossover, so the policy converges to lazy on
+loopback and to fixed prefetch on a real network---capturing the
+$10$--$20\,\%$ the current controller leaves above the crossover.
+
+\textbf{RDMA transport.}\, RDMA's $\approx\!1$--$2\,\mu$s RTT sits deep in
+the congestion-bound regime, so we expect the paradox---and the value of the
+controller---to persist there; confirming this on RDMA hardware, where the
+per-fault cost model changes, is open.
 
 \textbf{Learned thresholds.}\, $\dupthr$ and $\qthr$ are currently fixed.
 A per-workload calibration pass during the first few hundred faults could
@@ -1173,17 +1280,22 @@ adds signal beyond $\rho$ and $q$ is the open question.
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented \distriproc, an adaptive post-restore remote-memory runtime
-built on CRIU lazy restore and \uffd. We showed that fixed sequential
-prefetch can nearly double TTFR for memory-heavy workloads by congesting
-the fault-path TCP channel, and that a simple per-window controller using
-duplicate pressure and queue depth can detect and disable wasteful
-prefetch, recovering the majority of the performance loss with statistical
-significance ($p\!<\!10^{-4}$). On three workloads, the adaptive policy
-reduces prefetch volume by $20$--$58\,\%$ relative to fixed prefetch while
-matching demand-only lazy on TTFR ($p\!=\!0.11$ on the worst case). The
-system is implemented in userspace without kernel modifications and is
-reproducible from a single \texttt{make bench-paper} invocation.
+We presented a measurement study of speculative prefetch in the CRIU
+lazy-restore post-restore phase, and \distriproc, a userspace runtime that
+acts on it. Our central finding is that whether fixed sequential prefetch
+helps or hurts is governed by round-trip time: at loopback RTT it increases
+memory-heavy TTFR by $88\,\%$ ($n\!=\!20$) by congesting the shared
+fault-path channel---while cutting page faults $85\,\%$, so fault reduction
+misleads---but above a crossover near $\approx\!125\,\mu$s RTT it instead
+reduces TTFR (by $37\,\%$ at $1$\,ms), because demand-only lazy must
+serialize a full RTT per fault. A simple per-window controller using
+duplicate pressure and queue depth detects the congestion-bound regime and
+disables prefetch, recovering essentially all of the loopback regression
+(within $5.5$\,ms of demand-only lazy, $p\!=\!0.42$) and cutting prefetch
+volume $52$--$55\,\%$ on memory-light workloads; above the crossover it is
+conservative, motivating the RTT-aware policy we sketch as future work. The
+system is implemented in userspace without kernel modifications and every
+result is reproducible from a single benchmark invocation.
 
 % ── Appendix ────────────────────────────────────────────────────────────────
 \appendices
