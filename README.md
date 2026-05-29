@@ -77,8 +77,10 @@ make all
 # Non-root tests
 make test
 
-# Full paper benchmark (all workloads × 4 modes × 5 iterations)
-make bench-paper
+# Full paper benchmark (all workloads × 4 modes × 5 iterations).
+# Use the env wrapper so root sees torch + pycriu and the protobuf backend
+# is correct; running eval/bench.sh under bare sudo will fail to import deps.
+sudo bash eval/run_bench_env.sh --iterations 5
 
 # Generate report
 make report
@@ -86,6 +88,9 @@ make report
 # Generate figures (requires matplotlib)
 make figures
 ```
+
+> **Reproducing the paper's results requires Linux 6.18.7.** See `REPRODUCE.md`
+> for building/booting that kernel and the full run procedure.
 
 ## Lazy Handler Options
 
@@ -145,10 +150,30 @@ docs/
 
 ## Requirements
 
-- Linux 5.7+ (userfaultfd)
-- GCC, Python 3, pycriu (`pip install criu`)
-- CRIU 4.x
-- For benchmarks: `redis`, `torch torchvision` (pip), `matplotlib` (pip)
+- Linux 5.7+ (userfaultfd). **Paper numbers are canonical to Linux 6.18.7**;
+  the prefetch regression is kernel-sensitive (see `REPRODUCE.md`).
+- GCC, Python 3
+- CRIU 4.x. On Arch: `sudo pacman -S criu` — this also installs the `pycriu`
+  Python module (there is **no** `pip install criu` package; that command fails).
+- For benchmarks: `redis` (`sudo pacman -S redis`), CPU `torch torchvision`
+  (`pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision`),
+  `matplotlib` (`pip install matplotlib`)
+- For the paper PDF: [tectonic](https://tectonic-typesetting.github.io/)
+
+### protobuf compatibility note
+
+`pycriu` 4.2's image parser uses `FieldDescriptor.label`, removed from
+protobuf 6.x's C/upb backend. The page server (`src/criu_page_server.py`)
+restores it with a shim, but the benchmark must also force the pure-Python
+protobuf backend:
+
+```bash
+export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+```
+
+`eval/run_bench_env.sh` sets this (and makes a CPU-torch venv + `pycriu`
+visible to root) automatically — prefer it over calling `eval/bench.sh`
+directly under `sudo`.
 
 ## Scope
 

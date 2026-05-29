@@ -77,6 +77,13 @@
 \urlstyle{same}
 \usepackage{xspace}
 
+% ── Anonymization toggle (double-blind submission) ───────────────────────────
+% Set \anontrue for a double-blind submission build (strips author identity,
+% repo URL, e-mail, and the acknowledgment/funding/contribution declarations).
+% Leave \anonfalse for the camera-ready / arXiv build.
+\newif\ifanon
+\anonfalse
+
 % ── Macros ───────────────────────────────────────────────────────────────────
 \newcommand{\distriproc}{\textsc{DistriProc}\xspace}
 \newcommand{\uffd}{\texttt{userfaultfd}\xspace}
@@ -87,16 +94,28 @@
 % ── Title block ──────────────────────────────────────────────────────────────
 \title{\distriproc: An Adaptive Post-Restore\\Remote-Memory Runtime for Linux Processes}
 
+\ifanon
+\author{Anonymous Author(s)%
+\thanks{Paper submitted for double-blind review. Author identity, e-mail, and
+artifact repository omitted; the artifact will be released on acceptance.}%
+\thanks{Manuscript prepared May 28, 2026.}}
+\else
 \author{Utkarsh~Maurya%
 \thanks{U.~Maurya is an independent researcher
 (e-mail: \url{projects.utkarshmaurya@gmail.com}).}%
 \thanks{Source code and experiment artifact:
 \url{https://github.com/kernex-sbs/DistriProc}.}%
 \thanks{Manuscript prepared May 28, 2026.}}
+\fi
 
 % Running headers for odd/even pages.
+\ifanon
+\markboth{Submitted for double-blind review --- do not distribute}%
+{\distriproc: An Adaptive Post-Restore Remote-Memory Runtime}
+\else
 \markboth{Journal of Systems and Networking Research,~Vol.~XX, No.~X, Month~Year}%
 {Maurya: \distriproc: An Adaptive Post-Restore Remote-Memory Runtime}
+\fi
 
 % ─────────────────────────────────────────────────────────────────────────────
 \begin{document}
@@ -955,10 +974,17 @@ evaluates adaptive fetch policy for container migration TTFR.
 
 All numbers in this paper come from a single benchmark harness invoked as
 
+\ifanon
+\begin{lstlisting}[basicstyle=\small\ttfamily,frame=none]
+$ git clone <repository-omitted-for-review>
+$ cd DistriProc && make bench-paper
+\end{lstlisting}
+\else
 \begin{lstlisting}[basicstyle=\small\ttfamily,frame=none]
 $ git clone https://github.com/kernex-sbs/DistriProc
 $ cd DistriProc && make bench-paper
 \end{lstlisting}
+\fi
 
 \noindent The artifact pins the configuration that produced
 Tables~\ref{tab:ttfr}--\ref{tab:prefetch}: $n\!=\!5$ iterations across all
@@ -976,6 +1002,14 @@ standard Welch's procedure; no external scripts required.
 % ── 9. Limitations ───────────────────────────────────────────────────────────
 \section{Limitations}
 \label{sec:limitations}
+
+We organize the threats to validity as follows. \emph{Construct validity}:
+the PyTorch throughput measurement does not capture the remote-memory phase
+(below). \emph{Internal validity}: the small sample ($n\!=\!5$) bounds the
+effect sizes we can resolve. \emph{External validity}: loopback transport, a
+single host, a single CPU architecture, and---most consequentially---a single
+kernel version constrain how far the results generalize. Each is treated in
+turn.
 
 \textbf{Transport.}\, All experiments use TCP loopback. RDMA would reduce
 per-page RTT from $\approx 10\,\mu$s to $\approx 1$--$2\,\mu$s, changing
@@ -1254,6 +1288,24 @@ $N$ & faults & Controller window size (128) \\
 \end{tabular}
 \end{table}
 
+\ifanon
+% ── Data availability (anonymized) ───────────────────────────────────────────
+\section*{Data and Code Availability}
+
+The full experimental artifact---page-server implementation, lazy handler,
+benchmark harness, raw CSV results, per-iteration handler logs, statistical
+post-processing scripts, and the figure-generation pipeline used to produce
+Figs.~\ref{fig:pytorch_ttfr}--\ref{fig:prefetch_vol}---will be released
+publicly under a permissive licence upon acceptance. The repository URL and
+exact commit are omitted here for double-blind review. All tables can be
+regenerated from \texttt{results.csv} with standard Welch's procedure; no
+proprietary data are required.
+
+\section*{Conflicts of Interest}
+
+The author(s) declare no competing financial or non-financial interests
+relevant to the content of this article.
+\else
 % ── Acknowledgment ──────────────────────────────────────────────────────────
 \section*{Acknowledgment}
 
@@ -1291,6 +1343,7 @@ statistical analysis, and wrote the manuscript.
 
 The author declares no competing financial or non-financial interests
 relevant to the content of this article.
+\fi
 
 % ── Bibliography ─────────────────────────────────────────────────────────────
 \newpage
@@ -1298,6 +1351,7 @@ relevant to the content of this article.
 \bibliography{references}
 
 % ── Biography ────────────────────────────────────────────────────────────────
+\ifanon\else
 \begin{IEEEbiographynophoto}{Utkarsh Maurya}
 is an independent systems researcher working on Linux memory
 management, checkpoint/restore, and userspace runtimes for
@@ -1306,5 +1360,6 @@ disaggregated memory. He maintains the \emph{kernex} project, of which
 \url{https://github.com/kernex-sbs/DistriProc}; correspondence to
 \url{projects.utkarshmaurya@gmail.com}.
 \end{IEEEbiographynophoto}
+\fi
 
 \end{document}
