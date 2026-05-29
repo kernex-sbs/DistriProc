@@ -16,7 +16,7 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-XH_DIR="$ROOT_DIR/eval/results/crosshost"
+XH_DIR="$ROOT_DIR/eval/results/${XH_SUBDIR:-crosshost}"
 OUT_CSV="$XH_DIR/results-crosshost.csv"
 IFACE=lo
 ITERS="${ITERS:-10}"
@@ -39,7 +39,8 @@ trap cleanup EXIT INT TERM
 cleanup   # start clean
 
 # One-way delays in microseconds; RTT = 2 x delay.
-DELAYS_US=(0 250 500 1000)
+# Override with e.g. DELAYS_US="0 15 30 50 75 100 150 250" to pin the crossover.
+read -r -a DELAYS_US <<< "${DELAYS_US:-0 250 500 1000}"
 
 for d in "${DELAYS_US[@]}"; do
     rtt=$(( d * 2 ))
