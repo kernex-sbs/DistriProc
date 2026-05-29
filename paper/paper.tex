@@ -986,6 +986,45 @@ RTT ($\mu$s) & Lazy & Fixed & Adaptive & Fixed vs.\ Lazy \\
   \label{fig:crosshost}
 \end{figure}
 
+\subsection{Cross-Kernel Robustness}
+\label{sec:crosskernel}
+
+Because the paradox is an interaction between the page-fault path and TCP
+behavior, both of which evolve across kernel releases, we repeat the
+loopback PyTorch matrix ($n\!=\!20$, identical CPU PyTorch build) on stock
+Linux~$7.0.9$ and compare against the $6.18.7$ results
+(Table~\ref{tab:crosskernel}). Two things change with the kernel and two do
+not. The absolute TTFR shifts substantially---$7.0.9$'s lazy baseline is
+$\approx\!3\times$ higher ($1{,}944$ vs.\ $650$\,ms)---and the
+fixed-prefetch regression is smaller in relative terms ($+37\,\%$ vs.\
+$+88\,\%$). But the regression remains large and highly significant on both
+kernels (Welch $t\!=\!-12.7$ on $7.0.9$), and on both the controller
+recovers TTFR to statistical parity with demand-only lazy (within
+$37$\,ms, $p\!=\!0.37$ on $7.0.9$) while significantly beating fixed
+prefetch ($t\!=\!15.0$). The paradox and its mitigation are therefore not
+artifacts of a single kernel; their magnitude is, which is itself a useful
+caution for anyone benchmarking lazy restore.
+
+\begin{table}[t]
+\centering
+\caption{Cross-kernel PyTorch TTFR (ms, loopback, $n\!=\!20$). The paradox
+and the controller's recovery hold on both kernels; magnitude differs.}
+\label{tab:crosskernel}
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{5pt}
+\small
+\begin{tabular}{l r r r r}
+\toprule
+Kernel & Full & Lazy & Fixed & Adaptive \\
+\midrule
+Linux 6.18.7 & 191 & 650  & 1227 & 655  \\
+Linux 7.0.9  & 176 & 1944 & 2654 & 1907 \\
+\midrule
+Fixed regression & --- & --- & \multicolumn{2}{l}{$+88\,\%$ / $+37\,\%$} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 % ── 6. Discussion ────────────────────────────────────────────────────────────
 \section{Discussion}
 \label{sec:discussion}
@@ -1133,9 +1172,10 @@ per-iteration log files in \texttt{eval/results/logs/}.
 The exact commit producing the results in this paper is
 \texttt{0aad7ba}. Build environment: mainline Linux $6.18.7$, CRIU $4.2$,
 \texttt{gcc} $15.x$, Python $3.14$, PyTorch $2.12$ (CPU). Hardware:
-AMD Ryzen 7 7735HS / $15$\,GB RAM. The kernel version is load-bearing:
-the fixed-prefetch regression does not reproduce on Linux $7.0.x$
-(\S\ref{sec:limitations}).
+AMD Ryzen 7 7735HS / $15$\,GB RAM. The kernel version affects the
+magnitude: on Linux $7.0.9$ the regression is $+37\,\%$ rather than
+$+88\,\%$ (\S\ref{sec:crosskernel}), so reported absolute numbers assume
+$6.18.7$.
 Statistical post-processing (CIs in Table~\ref{tab:ttfr}, $t$-tests in
 Table~\ref{tab:ttest}) is reproducible from \texttt{results.csv} with
 standard Welch's procedure; no external scripts required.
@@ -1190,27 +1230,16 @@ remote-memory phase.
 same host. True live migration across machines would expose real network
 RTT and bandwidth constraints not present in loopback experiments.
 
-\textbf{Kernel sensitivity.}\, All numbers in this paper were obtained on
-Linux~$6.18.7$ (\S\ref{sec:eval}). The fixed-prefetch regression is not a
-fixed property of the workload but of the interaction between the
-loopback page-fault path and TCP congestion behavior, both of which are
-kernel-dependent. In preliminary re-runs on Linux~$7.0.x$, the PyTorch
-fixed-prefetch regression shrinks from $\approx 85\,\%$ to within
-run-to-run noise, while the memory-light \texttt{test\_loop} speedup
-($\approx 21$--$23\times$) is unchanged. We attribute this to plausible
-$7.0$-series changes that touch exactly the mechanisms the regression
-depends on: the reworked swap-in path (the swap-table ``unified swapin''
-work that removes swap-cache bypassing), batched large-folio
-page-fault and reclaim handling, and Accurate ECN (RFC~9768) enabled by
-default, which provides more than one congestion signal per round trip
-and changes how a loopback sender backs off under self-induced
-congestion. The qualitative finding---that fault-count reduction is not a
-reliable proxy for TTFR, and that speculative prefetch can degrade
-TTFR---holds wherever the regression is present; its magnitude, and hence
-the headroom available to the controller, is conditional on the
-deployment kernel. We regard this kernel-conditionality as a result in
-its own right rather than a confound, and a full cross-kernel
-characterization is future work.
+\textbf{Kernel sensitivity.}\, The headline numbers are from Linux~$6.18.7$;
+the absolute TTFR and the regression \emph{magnitude} are kernel-dependent
+(\S\ref{sec:crosskernel}). On stock Linux~$7.0.9$ the lazy baseline is
+$\approx\!3\times$ higher and the fixed-prefetch regression is $+37\,\%$
+rather than $+88\,\%$, but the paradox and the controller's recovery both
+persist and remain statistically significant. We attribute the magnitude
+shift to $7.0$-series changes in exactly the mechanisms involved---the
+reworked swap-in path (the swap-table ``unified swapin'' work), batched
+large-folio fault/reclaim handling, and Accurate ECN (RFC~9768) on by
+default---but a full sweep across kernel versions is future work.
 
 \textbf{Sample size.}\, We run $n\!=\!20$ iterations per configuration.
 The headline effects ($88\,\%$ TTFR change for fixed prefetch on PyTorch)
