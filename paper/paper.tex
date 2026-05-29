@@ -395,31 +395,41 @@ adding latency to the fault path.
 \textbf{Queue drops}: prefetch requests dropped because the queue was full.
 A nonzero count confirms the queue is saturated.
 
-Algorithm~\ref{alg:controller} summarizes the controller. Thresholds (set
-by inspection of pilot runs and not tuned further) are
-$\dupthr\!=\!0.70$, $\qthr\!=\!500$, $\drainthr\!=\!64$. The controller is
-intentionally simple: it is a first paper-worthy policy, not a final
-production one. Sensitivity to thresholds is discussed in
-\S\ref{sec:sensitivity}.
+Algorithm~\ref{alg:controller} summarizes the controller, which applies a
+two-tier rule against a bounded prefetch queue of $Q\!=\!8192$ entries.
+The \emph{disable} tier fires when the duplicate rate reaches
+$\dupthr\!=\!0.80$, the queue exceeds $Q/2$, or any request was dropped; a
+milder \emph{halve} tier (duplicate rate $0.50$, or queue above $Q/4$)
+shrinks $W$ and $S$ before resorting to a full disable; and prefetch
+\emph{grows} again only when a window is clean (zero duplicates and queue
+below $\drainthr\!=\!Q/32$). After a disable the controller observes a
+$16$-window cooldown before a probe re-enable. These thresholds were set by
+inspection of pilot runs and not tuned further; the controller is
+intentionally simple---a first paper-worthy policy, not a final production
+one---and \S\ref{sec:sensitivity} shows TTFR is insensitive to their exact
+values.
 
 \begin{algorithm}[t]
 \caption{Adaptive prefetch controller, run every $N$ faults}
 \label{alg:controller}
 \begin{algorithmic}
-\Require window size $N$; thresholds $\dupthr,\qthr,\drainthr$;
-         window $W$, stride $S$
+\Require window $N$; queue size $Q$; disable thresholds $\dupthr\!=\!0.80$,
+         $Q/2$; halve thresholds $0.50$, $Q/4$; grow threshold
+         $\drainthr\!=\!Q/32$; window $W$, stride $S$
 \Ensure  prefetch enable flag and dynamic $W,S$
 \Statex
 \State $\rho \gets (\text{duplicate prefetches})/(\text{prefetch requests})$
-\State $q   \gets$ current queue depth
-\If{$\rho \le \dupthr$ \textbf{and} $q \le \qthr$}
-    \State keep current $W,S$ \Comment{healthy window}
-\Else
-    \State disable prefetch; wait until $q < \drainthr$
-    \State re-enable with probe $W'\!=\!\lceil W/4\rceil$,
-           $S'\!=\!\lceil S/2\rceil$
-    \State if next window still wasteful: disable again;
-           else: restore $W,S$
+\State $q \gets$ queue depth;\; $d \gets$ dropped requests
+\If{in cooldown}
+    \State decrement cooldown; on expiry re-enable with $W,S$ (probe)
+\ElsIf{$\rho \ge \dupthr$ \textbf{or} $q > Q/2$ \textbf{or} $d > 0$}
+    \State $W,S \gets 0$; disable prefetch; cooldown $\gets 16$ windows
+\ElsIf{$\rho \ge 0.50$ \textbf{or} $q > Q/4$}
+    \State $W \gets \lfloor W/2\rfloor$;\; $S \gets \lfloor S/2\rfloor$
+           \Comment{disable if both reach $0$}
+\ElsIf{$\rho = 0$ \textbf{and} $q < \drainthr$}
+    \State $W \gets \min(W{+}2, W_{\max})$;\;
+           $S \gets \min(S{+}1, S_{\max})$ \Comment{grow}
 \EndIf
 \end{algorithmic}
 \end{algorithm}
@@ -465,11 +475,11 @@ The controller cannot measure $r$ and $b$ directly, but $\rho$ and $q$ are
 the observable proxies: $\rho$ tracks $\delta$ (waste), and $q$ tracks the
 moment the offered load exceeds drain rate. Disabling prefetch when either
 proxy crosses its threshold is therefore equivalent to disabling the
-moment Eq.~\eqref{eq:condition} is violated. The thresholds
-$\dupthr\!=\!0.70$ and $\qthr\!=\!500$ correspond to ${\sim}\!70\,\%$ waste
-or roughly half a second of queued backlog at the measured page-server
-throughput, which matches the regime in which the cost model predicts
-$T_\textit{prefetch} > T_\textit{lazy}$ on our workloads.
+moment Eq.~\eqref{eq:condition} is violated. The disable thresholds
+$\dupthr\!=\!0.80$ and $\qthr\!=\!Q/2$ correspond to $80\,\%$ waste or a
+half-full prefetch queue ($\approx\!170$\,ms of backlog at the measured
+page-server throughput), which matches the regime in which the cost model
+predicts $T_\textit{prefetch} > T_\textit{lazy}$ on our workloads.
 
 % ── 4. Implementation ───────────────────────────────────────────────────────
 \section{Implementation}
@@ -930,11 +940,12 @@ Redis: $98\,\%$, $q\!=\!541$).
 in production, our measurements suggest three operational rules. First,
 estimate the working-set ratio (touched pages before TTFR over total mapped
 pages); if it is below ${\sim}5\,\%$, demand-only lazy is sufficient and
-prefetch yields no benefit on any of our workloads. Second, profile the
-page-server's sustained throughput $b$ once at deployment time; the
-controller's $\qthr$ should be set near $b\!\cdot\!\Delta_\textit{tolerable}$
-where $\Delta_\textit{tolerable}$ is the maximum acceptable queue delay
-(we used $\Delta_\textit{tolerable}\!\approx\!500$\,ms). Third, separate the
+prefetch yields no benefit on any of our workloads. Second, size the bounded prefetch queue $Q$ from the
+page-server's sustained throughput $b$ so that the disable threshold
+$\qthr\!=\!Q/2$ corresponds to a tolerable queueing delay
+$\Delta_\textit{tolerable}\!\approx\!(Q/2)/b$; with our $Q\!=\!8192$ and
+$b\!\approx\!24{,}000$\,pages/s this caps added delay near
+$\Delta_\textit{tolerable}\!\approx\!170$\,ms. Third, separate the
 fault-path and prefetch-path TCP connections at the page-server end
 (distinct sockets, ideally distinct kernel send buffers) so the disable
 decision can drain prefetch backlog without simultaneously stalling fault
@@ -1219,9 +1230,9 @@ bracket this transition: $\dupthr$ caps $\delta$ at the point where the
 predicted waste exceeds the unsupplied slack of the link, and $\qthr$ caps
 $q$ at the point where Eq.~\eqref{eq:little} already implies
 $\rho_{\!\textit{link}}\!\gtrsim\!1$ regardless of the estimate of $\delta$.
-The drain threshold $\drainthr$ is set conservatively at $1/8$ of $\qthr$
-so re-enabling does not re-saturate the channel before its prior backlog
-has cleared. The same shape would arise for any policy in which
+The grow threshold $\drainthr\!=\!Q/32$ is set far below the disable
+threshold $\qthr\!=\!Q/2$ so prefetch only ramps back up once the queue is
+nearly empty and cannot immediately re-saturate the channel. The same shape would arise for any policy in which
 speculative work shares a bandwidth-limited transport with synchronous
 work; this is why the same parameters work, qualitatively, across our
 three workloads despite their very different access patterns.
@@ -1323,10 +1334,11 @@ $\rho_{\!\textit{link}}$ & --- & Link utilization $\lambda/b$
 $q$ & requests & Observed MPSC-queue depth at the controller \\
 $\rho$ & --- & Per-window duplicate rate
             (Algorithm~\ref{alg:controller}) \\
-$\dupthr$ & --- & Duplicate-rate disable threshold (0.70) \\
-$\qthr$ & requests & Queue-depth disable threshold (500) \\
-$\drainthr$ & requests & Drain threshold before re-enable (64) \\
-$N$ & faults & Controller window size (128) \\
+$\dupthr$ & --- & Duplicate-rate disable threshold ($0.80$; halve at $0.50$) \\
+$\qthr$ & requests & Queue-depth disable threshold ($Q/2$; halve at $Q/4$) \\
+$\drainthr$ & requests & Grow threshold ($Q/32$) \\
+$Q$ & requests & Bounded prefetch-queue capacity ($8192$) \\
+$N$ & faults & Controller window size ($128$) \\
 \bottomrule
 \end{tabular}
 \end{table}
