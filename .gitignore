@@ -9,6 +9,13 @@ src/lazy_handler
 # Python
 __pycache__/
 *.pyc
+venv/
+venv-cpu/
+
+# Off-canonical-machine pilot/ablation runs (kept local, not committed)
+eval/results/pilot/
+eval/results/pilot-cpu/
+eval/results/ablation/
 
 # Logs
 *.log

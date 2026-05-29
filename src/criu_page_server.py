@@ -21,6 +21,25 @@ import struct
 import sys
 import threading
 
+# protobuf 6.x removed FieldDescriptor.label, which pycriu 4.2's pb2dict.py
+# still relies on (field.label == FD.LABEL_REPEATED). Restore it as a
+# compatibility shim before importing pycriu so image parsing works on
+# current protobuf. The new API exposes the same information via is_repeated.
+try:
+    from google.protobuf.descriptor import FieldDescriptor as _FD
+
+    if not hasattr(_FD, "label"):
+        def _compat_label(self):
+            if getattr(self, "is_repeated", False):
+                return _FD.LABEL_REPEATED
+            if getattr(self, "is_required", False):
+                return _FD.LABEL_REQUIRED
+            return _FD.LABEL_OPTIONAL
+
+        _FD.label = property(_compat_label)
+except Exception:
+    pass
+
 from pycriu import images as criu_images
 
 PAGE_SIZE = 4096

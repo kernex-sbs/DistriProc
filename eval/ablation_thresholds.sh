@@ -27,6 +27,40 @@ fi
 mkdir -p "$ABL_DIR/logs"
 echo "workload,mode,dup_disable_pct,dup_halve_pct,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms" > "$OUT_CSV"
 
+# Expose the invoking user's venv (if any) so root's python sees torch.
+# bench.sh already exports SUDO_USER's --user-site; add the venv too.
+if [ -n "${SUDO_USER:-}" ]; then
+    USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    for venv_site in "$ROOT_DIR/venv"/lib/python*/site-packages; do
+        if [ -d "$venv_site" ]; then
+            export PYTHONPATH="${venv_site}${PYTHONPATH:+:$PYTHONPATH}"
+        fi
+    done
+    for u_site in "$USER_HOME"/.local/lib/python*/site-packages; do
+        if [ -d "$u_site" ]; then
+            export PYTHONPATH="${u_site}${PYTHONPATH:+:$PYTHONPATH}"
+        fi
+    done
+fi
+
+# pycriu 4.2's pb2dict.py calls FieldDescriptor.label, which the C/upb
+# protobuf backend removed in 5.x. Force pure-Python so .label still works.
+export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+
+echo "PYTHONPATH=$PYTHONPATH"
+echo "PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=$PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"
+if ! python3 -c "import torch, torchvision; print('torch', torch.__version__, 'OK')" 2>&1; then
+    echo "ERROR: cannot import torch from root context."
+    echo "       PYTHONPATH currently: $PYTHONPATH"
+    echo "       Listing venv site-packages root:"
+    ls "$ROOT_DIR/venv"/lib/python*/site-packages 2>&1 | head -5 || true
+    exit 1
+fi
+if ! python3 -c "from pycriu import images; print('pycriu OK')" 2>&1; then
+    echo "ERROR: cannot import pycriu from root context."
+    exit 1
+fi
+
 # Sweep: disable / halve pairs. Pair held at disable - 30 to keep gap constant.
 SETTINGS=(
     "30 10"
@@ -48,7 +82,8 @@ for setting in "${SETTINGS[@]}"; do
     export DISTRIPROC_DUP_HALVE_PCT="$HALVE"
 
     TMP_OUT="$LOG_DIR/results.csv"
-    sudo -E bash "$ROOT_DIR/eval/bench.sh" \
+    # Already root; drop inner sudo so PYTHONPATH (with venv torch) survives.
+    bash "$ROOT_DIR/eval/bench.sh" \
         --workloads pytorch \
         --modes lazy-adaptive \
         --iterations 5 \

@@ -752,17 +752,19 @@ prefetch enabled. The duplicate-rate signal is either firmly above the
 largest plausible threshold (memory-heavy) or firmly below the smallest
 (memory-light), so the choice of $\dupthr$ within a wide middle range is
 largely cosmetic on these workloads.
-Second, to validate this directly we ship a sweep over five
-disable/halve pairs spanning aggressive ($30/10\,\%$) to permissive
-($90/60\,\%$), holding the halve threshold $30$ points below disable.
-Each setting runs PyTorch in \texttt{lazy-adaptive} for $n\!=\!5$ via
-\texttt{eval/ablation\_thresholds.sh}, with thresholds passed through the
-environment variables
-\texttt{DISTRIPROC\_DUP\_\{DISABLE,HALVE\}\_PCT}.
-We expect a flat optimum across the middle three settings and a small
-monotonic degradation at the extremes rather than a sharp cliff;
-per-setting numbers will appear in the camera-ready version once the
-sweep completes on the artifact-evaluation machine.
+Second, to make this auditable rather than assertional, both thresholds
+are runtime-tunable through the environment variables
+\texttt{DISTRIPROC\_DUP\_\{DISABLE,HALVE\}\_PCT}, and the artifact ships a
+sweep harness (\texttt{eval/ablation\_thresholds.sh}) that runs the
+\texttt{lazy-adaptive} mode across five disable/halve pairs spanning
+aggressive ($30/10\,\%$) to permissive ($90/60\,\%$). We caution that a
+meaningful threshold sweep must be run on the same kernel that produces
+the regression being mitigated: as \S\ref{sec:limitations} reports, the
+fixed-prefetch regression itself is kernel-sensitive, and on a kernel
+where the regression is small there is correspondingly little for any
+threshold to recover. The harness is therefore provided as reproducibility
+tooling to be exercised on the evaluation kernel (Linux~$6.18.7$), not as
+a claim of an environment-independent optimum.
 
 \subsection{Throughput}
 
@@ -999,6 +1001,28 @@ remote-memory phase.
 \textbf{Single-machine evaluation.}\, Page server and process run on the
 same host. True live migration across machines would expose real network
 RTT and bandwidth constraints not present in loopback experiments.
+
+\textbf{Kernel sensitivity.}\, All numbers in this paper were obtained on
+Linux~$6.18.7$ (\S\ref{sec:eval}). The fixed-prefetch regression is not a
+fixed property of the workload but of the interaction between the
+loopback page-fault path and TCP congestion behavior, both of which are
+kernel-dependent. In preliminary re-runs on Linux~$7.0.x$, the PyTorch
+fixed-prefetch regression shrinks from $\approx 85\,\%$ to within
+run-to-run noise, while the memory-light \texttt{test\_loop} speedup
+($\approx 21$--$23\times$) is unchanged. We attribute this to plausible
+$7.0$-series changes that touch exactly the mechanisms the regression
+depends on: the reworked swap-in path (the swap-table ``unified swapin''
+work that removes swap-cache bypassing), batched large-folio
+page-fault and reclaim handling, and Accurate ECN (RFC~9768) enabled by
+default, which provides more than one congestion signal per round trip
+and changes how a loopback sender backs off under self-induced
+congestion. The qualitative finding---that fault-count reduction is not a
+reliable proxy for TTFR, and that speculative prefetch can degrade
+TTFR---holds wherever the regression is present; its magnitude, and hence
+the headroom available to the controller, is conditional on the
+deployment kernel. We regard this kernel-conditionality as a result in
+its own right rather than a confound, and a full cross-kernel
+characterization is future work.
 
 \textbf{Sample size.}\, $n\!=\!5$ is small. The effect sizes we report
 (${>}80\,\%$ TTFR change for fixed prefetch on PyTorch) are large enough
