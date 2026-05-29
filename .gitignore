@@ -36,3 +36,5 @@ eval/results/*.log
 
 # Planning
 .planning/STATE.md.old
+# Cross-kernel run logs
+eval/results/kernel7/logs/
