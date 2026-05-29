@@ -12,10 +12,12 @@ __pycache__/
 venv/
 venv-cpu/
 
-# Off-canonical-machine pilot/ablation runs (kept local, not committed)
+# Pilot runs (kept local, not committed)
 eval/results/pilot/
 eval/results/pilot-cpu/
-eval/results/ablation/
+eval/results/pilot-6187/
+# Ablation: track the summary CSV, ignore the bulky per-setting logs
+eval/results/ablation/logs/
 
 # Logs
 *.log
