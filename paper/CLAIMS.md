@@ -85,7 +85,7 @@ process to begin serving requests before all pages are transferred, cutting TTFR
 substantially compared to full restore.
 
 **Evidence:**
-- test_loop: full=1019ms, lazy=42ms → 24.5x reduction (n=20)
+- test_loop: full=1019ms, lazy=42ms → 24.3x reduction (n=20)
 
 **Caveat the paper must state:**
 This benefit inverts for workloads that must page in their entire working set before
@@ -164,11 +164,12 @@ to count as a "hit." This metric is not a useful success indicator for async pre
 must not be cited as one. The paper should explain why the controller moved to duplicate
 pressure instead.
 
-**Throughput baseline for redis/test_loop:** redis lazy modes achieve ~68-69% of full
-restore throughput (107k → 73k ops/sec). This fails the H2 threshold (>70%) and is a real
-cost of the TCP page server on a high-throughput in-memory workload. The paper must
+**Throughput baseline for redis/test_loop:** redis lazy modes achieve ~84-85% of full
+restore throughput (full=105,050 ops/sec; n=20 canonical dataset). This is a real cost
+of the TCP page server on a high-throughput in-memory workload. The paper must
 acknowledge this as a transport-layer limitation, not a policy failure. The adaptive
-controller does not fix TCP overhead.
+controller does not fix TCP overhead. (Earlier pilot figure was ~68-69%/107k→73k;
+superseded by the n=20 6.18.7 matrix in paper.tex Table tab:throughput.)
 
 ---
 
