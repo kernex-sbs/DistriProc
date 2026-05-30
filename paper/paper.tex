@@ -582,9 +582,9 @@ to a probe request.
 in a tight loop and responds to a UDP probe. Footprint $\approx 266$ pages
 ($\approx 1$\,MB).
 
-\item \textbf{Redis}: Valkey~9.1 (a Redis-compatible server) pre-warmed with
-$10{,}000$ unique keys ($\approx 13.77$\,MB working set). Throughput measured
-as GET ops/sec via \texttt{redis-benchmark}.
+\item \textbf{Redis}: Valkey~9.1 (a Redis-compatible server, referred to as
+Redis below) pre-warmed with $10{,}000$ unique keys ($\approx 13.77$\,MB
+working set). Throughput measured as GET ops/sec via \texttt{redis-benchmark}.
 
 \item \textbf{PyTorch}: ResNet-18 loaded into memory, checkpointed, and
 lazily restored. Footprint $\approx 15{,}515$ pages
@@ -944,8 +944,11 @@ deployment remains future work, \S\ref{sec:limitations}), but it exercises
 the real TCP stack under non-trivial delay.
 
 The effect of prefetch \emph{reverses} with RTT
-(Fig.~\ref{fig:crosshost}, Table~\ref{tab:crosshost}). There is a crossover
-near $\approx\!125\,\mu$s RTT:
+(Fig.~\ref{fig:crosshost}, Table~\ref{tab:crosshost}). The loopback row of
+this $n\!=\!10$ sweep ($626\!\to\!1{,}198$\,ms, $+91\,\%$) reproduces the
+$n\!=\!20$ headline ($650\!\to\!1{,}227$\,ms, $+88\,\%$) within run-to-run
+variation; the small offset is the smaller sample, not a different regime.
+There is a crossover near $\approx\!125\,\mu$s RTT:
 
 \begin{itemize}
 \item \textbf{Below the crossover (congestion-bound).} Demand-only lazy is
