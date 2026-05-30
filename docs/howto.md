@@ -123,14 +123,19 @@ Policy: faults=128 hits=0 prefetched=0 drops=0 dup=46 dup_rate=100% qdepth=3796 
 
 ## 5. Benchmarks
 
-### Final paper benchmark (all workloads × 4 modes × 5 iterations)
+### Final paper benchmark (all workloads × 4 modes × 20 iterations)
 
 ```bash
-make bench-paper
+# Prefer the env wrapper: it makes the user's CPU-torch venv + pycriu visible to
+# root and sets the pure-Python protobuf backend pycriu 4.2 needs (see REPRODUCE.md).
+sudo bash eval/run_bench_env.sh --iterations 20
 ```
 
 This runs `test_loop`, `redis`, and `pytorch` across `full`, `lazy`, `lazy-prefetch`,
-and `lazy-adaptive` modes. Results written to `eval/results/results.csv`.
+and `lazy-adaptive` modes. Results written to `eval/results/results.csv`. Paper
+numbers require Linux 6.18.x (the regression magnitude is kernel-dependent —
+`REPRODUCE.md`). Calling `eval/bench.sh` directly under bare `sudo` can fail to
+import torch/pycriu; the wrapper avoids that.
 
 ### Partial runs with accumulation
 

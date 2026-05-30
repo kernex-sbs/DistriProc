@@ -10,11 +10,11 @@ DistriProc is a research prototype built on:
 - `userfaultfd` for user-space page fault handling
 - a TCP page server that serves pages from CRIU images
 
-The original idea was broad process-level remote paging / remote memory. The current paper direction is narrower and more defensible:
+The original idea was broad process-level remote paging / remote memory. The current paper is a **measurement study**:
 
-`adaptive post-restore remote-memory runtime for restored Linux processes`
+`When Prefetch Hurts: RTT-Dependent Speculative Paging in CRIU Lazy Restore`
 
-The contribution is no longer framed as “remote paging exists” or “distributed shared memory.” The repo is now positioned as a userspace runtime that decides how to fetch pages after lazy restore:
+Central finding: whether fixed sequential prefetch helps or hurts post-restore TTFR is governed by round-trip time. At loopback it hurts (PyTorch +88%, n=20) while cutting page faults 85%; above a ~125 µs RTT crossover it helps (−37% at 1 ms). Holds on both Linux 6.18.7 (+88%) and 7.0.9 (+37%). DistriProc is the userspace runtime that acts on it — a controller that disables prefetch in the congestion-bound regime. It decides how to fetch pages after lazy restore:
 
 - demand paging
 - asynchronous prefetch

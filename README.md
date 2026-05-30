@@ -1,11 +1,20 @@
-# DistriProc
+# DistriProc — When Prefetch Hurts
 
-**Adaptive post-restore remote memory for Linux processes.**
+**An RTT-dependent study of speculative paging in CRIU lazy restore, plus a
+userspace runtime that acts on it.**
 
 DistriProc is a research prototype built on `CRIU` and `userfaultfd`. It restores
 Linux processes with lazy paging, serves missing pages over TCP, and runs an adaptive
 controller that decides when to prefetch and when to back off — based on duplicate
 pressure and queue depth signals observed during the post-restore remote-memory phase.
+
+**Headline finding:** whether fixed sequential prefetch *helps or hurts* TTFR is
+governed by round-trip time. At loopback RTT it **increases** PyTorch TTFR by
+**88%** (650 → 1227 ms) — while *cutting page faults 85%*, so fault count is not a
+proxy for latency. Inject RTT and the effect **crosses over near ~125 µs**: above
+that, prefetch *reduces* TTFR (−37% at 1 ms; demand-only lazy times out at 2 ms).
+The adaptive controller recovers the loopback regression (to within 5.5 ms of
+demand-only lazy, p = 0.42) and is the right policy below the crossover.
 
 ## What It Does
 
@@ -25,30 +34,50 @@ Three modes are supported:
 
 ## Final Evaluation Results
 
-All numbers: 5 iterations, loopback TCP, AMD Ryzen 7 7735HS, Linux 6.18.7, CRIU 4.2.
+All numbers: 20 iterations, loopback TCP, AMD Ryzen 7 7735HS, mainline Linux
+6.18.7, CRIU 4.2, CPU PyTorch 2.12. (The regression magnitude is
+kernel-dependent — see *Cross-kernel* below.)
 
 ### Time-to-First-Request (ms) — lower is better
 
 | Workload | Full restore | Lazy | Fixed prefetch | **Adaptive** |
 |----------|-------------|------|----------------|-------------|
-| test\_loop | 1020 ± 2 | 48 ± 4 | 48 ± 4 | **49 ± 6** |
-| Redis | 32 ± 1 | 46 ± 10 | 38 ± 9 | **44 ± 6** |
-| PyTorch | 209 ± 11 | 625 ± 18 | 1159 ± 24 ❌ | **686 ± 67** ✓ |
+| test\_loop | 1019 ± 2 | 42 ± 1 | 43 ± 3 | **42 ± 2** |
+| Redis | 32 ± 2 | 37 ± 2 | 39 ± 2 | **38 ± 2** |
+| PyTorch | 191 ± 7 | 650 ± 10 | 1227 ± 24 ❌ | **655 ± 9** ✓ |
 
 **Key results:**
-- Lazy restore cuts TTFR 21× for memory-light workloads (test\_loop: 1020 → 48 ms)
-- Fixed prefetch doubles TTFR for memory-heavy workloads (PyTorch: 625 → 1159 ms) by congesting the fault-path TCP channel
-- Adaptive controller recovers 473 ms of the PyTorch regression (1159 → 686 ms) and cuts prefetch volume 45–58% across all workloads
+- Lazy restore cuts TTFR **24.5×** for memory-light workloads (test\_loop: 1019 → 42 ms).
+- At loopback, fixed prefetch **increases** PyTorch TTFR **88%** (650 → 1227 ms, Welch *t* = −45.9) by congesting the fault-path TCP channel — while reducing page faults 85% (15,515 → 2,322).
+- Adaptive controller recovers to **655 ms**, statistically indistinguishable from demand-only lazy (*t* = −0.82, *p* = 0.42), and cuts prefetch volume 52–55% on the memory-light workloads.
+
+### RTT crossover (PyTorch, netem on loopback, n = 10)
+
+| RTT | Lazy | Fixed prefetch | verdict |
+|-----|------|------|---------|
+| 0 (loopback) | 626 | 1198 | prefetch **−91% worse** |
+| ~125 µs | — | — | **crossover** |
+| 1 ms | 16700 | 10462 | prefetch **+37% better** |
+| 2 ms | timeout | 12807 | prefetch finishes; lazy doesn't |
+
+The paradox is a property of the congestion-bound (near-zero-RTT) regime; above
+the crossover prefetch's latency-hiding wins.
+
+### Cross-kernel
+
+The paradox and the controller's recovery hold on both kernels; only the
+magnitude differs: **+88%** on Linux 6.18.7 vs **+37%** on Linux 7.0.9 (n = 20),
+on a ~3× higher 7.0.9 lazy baseline.
 
 ### Throughput (% of full restore baseline)
 
 | Workload | Lazy | Fixed prefetch | Adaptive |
 |----------|------|----------------|----------|
 | test\_loop | 100% | 100% | 100% |
-| Redis | 68% | 66% | 69% |
-| PyTorch | 100% | 97% | 94% |
+| Redis | 84% | 84% | 85% |
+| PyTorch | 103% | 103% | 102% |
 
-Redis throughput shortfall (~68%) reflects TCP loopback overhead on a
+Redis throughput shortfall (~84%) reflects TCP loopback overhead on a
 high-throughput in-memory workload, not a policy effect.
 
 ## How It Works

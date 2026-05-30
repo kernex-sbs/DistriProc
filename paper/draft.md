@@ -1,5 +1,10 @@
 # DistriProc: An Adaptive Post-Restore Remote-Memory Runtime for Linux Processes
 
+> **⚠️ SUPERSEDED.** Early prose draft with stale (n=5) numbers and the pre-RTT
+> framing. Canonical paper is `paper/paper.tex` — *"When Prefetch Hurts:
+> RTT-Dependent Speculative Paging in CRIU Lazy Restore"* (n=20, RTT crossover,
+> cross-kernel). Kept for history only; do not cite from here.
+
 ---
 
 ## Abstract

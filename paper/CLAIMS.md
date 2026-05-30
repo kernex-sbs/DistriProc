@@ -56,7 +56,26 @@ One sentence:
 
 ---
 
-## Headline Claims (3, locked)
+## Headline Claims
+
+> **Updated to the n=20 mainline-6.18.7 dataset + the RTT/cross-kernel results.
+> Canonical numbers live in `paper/paper.tex`.** The central claim is now C0
+> (the RTT crossover); C1–C3 are the loopback findings it contextualizes.
+
+### C0 — Whether fixed prefetch helps or hurts post-restore TTFR is governed by RTT
+
+**Precise statement:**
+Fixed sequential prefetch is harmful below an RTT crossover (~125 µs) and
+beneficial above it. At loopback it increases PyTorch TTFR +88% (650→1227 ms);
+at 1 ms RTT it reduces TTFR −37% (16700→10462 ms); at 2 ms demand-only lazy
+times out while prefetch completes. Measured by injecting RTT with `netem`
+(`eval/crosshost_netem.sh`, n=10).
+
+**Caveat:** RTT is emulated on one host (not two machines); RDMA untested. The
+controller is tuned for the sub-crossover (congestion-bound) regime and is
+conservative above the crossover.
+
+---
 
 ### C1 — Lazy restore provides significant TTFR benefit for memory-light workloads
 
@@ -66,11 +85,11 @@ process to begin serving requests before all pages are transferred, cutting TTFR
 substantially compared to full restore.
 
 **Evidence:**
-- test_loop: full=1020ms, lazy=48ms → 21x reduction
+- test_loop: full=1019ms, lazy=42ms → 24.5x reduction (n=20)
 
 **Caveat the paper must state:**
 This benefit inverts for workloads that must page in their entire working set before
-serving (e.g. a model inference server). pytorch: full=209ms, lazy=625ms → lazy 3x slower.
+serving (e.g. a model inference server). pytorch: full=191ms, lazy=650ms → lazy 3.4x slower.
 The benefit is workload-dependent and the paper does not claim lazy restore is universally
 faster.
 
@@ -83,14 +102,15 @@ A fixed sequential prefetch policy that is always enabled causes TTFR regression
 memory-heavy workloads because async prefetch traffic competes with fault-path traffic
 over the same TCP connection, increasing queue backlog and delaying fault resolution.
 
-**Evidence:**
-- pytorch lazy=625ms, lazy-prefetch=1159ms → fixed prefetch doubles TTFR
-- pytorch page faults: lazy=15743, lazy-prefetch=6352 (prefetch reduces faults 60%
-  but increases TTFR 85% — reduced faults do not imply better latency)
+**Evidence (loopback):**
+- pytorch lazy=650ms, lazy-prefetch=1227ms → fixed prefetch +88% (Welch t=−45.9)
+- pytorch page faults: lazy=15515, lazy-prefetch=2322 (prefetch reduces faults 85%
+  yet increases TTFR — reduced faults do not imply better latency)
 
 **Caveat the paper must state:**
 On memory-light workloads (redis, test_loop) fixed prefetch is not harmful (TTFR delta
-is within noise). The failure mode is specific to workloads with large working sets.
+within noise). The failure mode is specific to large working sets AND to the
+sub-crossover RTT regime — above ~125 µs RTT fixed prefetch is beneficial (see C0).
 
 ---
 
@@ -102,17 +122,19 @@ depth can identify when prefetch is harmful and disable it, recovering near-dema
 performance on memory-heavy workloads and reducing prefetch volume on all workloads,
 without regressing memory-light workloads.
 
-**Evidence:**
-- pytorch: lazy-adaptive=686ms vs lazy-prefetch=1159ms (recovers 473ms, −41%)
-- pytorch: adaptive faults≈lazy faults (15888 vs 15743) — controller backed off completely
-- pytorch: adaptive prefetched=1695 pages (probe window before disable) vs fixed=2121
-- redis: adaptive prefetch volume −45% vs fixed, TTFR delta +6ms (noise)
-- test_loop: adaptive prefetch volume −58% vs fixed, TTFR delta +1ms (noise)
+**Evidence (loopback):**
+- pytorch: lazy-adaptive=655ms vs lazy-prefetch=1227ms (recovers 572ms; t=+46.1)
+- pytorch: adaptive faults≈lazy faults (15496 vs 15515) — controller backed off completely
+- pytorch: adaptive prefetched=1466 pages vs fixed=788 (re-enables post-cooldown after
+  the fault storm; the win on pytorch is TTFR, not volume)
+- redis: adaptive prefetch volume −52% vs fixed, TTFR delta +1ms (noise)
+- test_loop: adaptive prefetch volume −55% vs fixed, TTFR delta within noise
 
 **Caveat the paper must state:**
-Adaptive mode does not always outperform plain lazy on TTFR. pytorch adaptive=686ms vs
-lazy=625ms (+10%). The claim is "avoids the worst outcome and reduces waste," not "adaptive
-always wins." The controller is a heuristic; it is not learned or predicted.
+Adaptive ≈ plain lazy on TTFR: pytorch adaptive=655ms vs lazy=650ms (+5.5ms,
+t=−0.82, p=0.42 → statistically indistinguishable). The claim is "recovers the
+congestion-bound regression and reduces waste," not "adaptive always wins." Above the
+RTT crossover (C0) the controller is conservative. It is a heuristic, not learned.
 
 ---
 
