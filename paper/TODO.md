@@ -28,10 +28,11 @@ remains before submission.
       Shortlist parked in `paper/VENUE_OPTIONS.md`. Decision pending. Drives the
       running head, page-limit/overlength check, and double-blind (`\anontrue`) build.
 - [ ] **Two-machine cross-host run.** Real LAN A<->B validation of the crossover (the
-      n=10 sweep is netem-emulated on one host). Harness + procedure to be added
-      (`eval/crosshost_2machine.sh`, `REPRODUCE-2machine.md`); user runs; results fold
-      into a new §V "Real two-machine validation" subsection. This is the main
-      reviewer-objection closer.
+      n=10 sweep is netem-emulated on one host). Harness + procedure **ready**
+      (`eval/crosshost_2machine.sh`, `REPRODUCE-2machine.md`) — user runs on A with B on
+      the wired LAN, then pastes `eval/results/crosshost-2machine/results.csv` back to
+      fold into a new §V "Real two-machine validation" subsection. Main reviewer-objection
+      closer.
 - [ ] **Final human proofread** for tone/flow (mechanical + logical layers are clean).
 - [ ] **Packaging** once venue is set: arXiv source tarball + camera-ready PDF, and the
       submission `\anontrue` build if the venue is double-blind.
