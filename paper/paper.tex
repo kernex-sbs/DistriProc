@@ -1,5 +1,5 @@
 %% ============================================================================
-%%  DistriProc: An Adaptive Post-Restore Remote-Memory Runtime for Linux Processes
+%%  When Prefetch Hurts: RTT-Dependent Speculative Paging in CRIU Lazy Restore
 %%  IEEE Journal format (IEEEtran.cls). Camera-ready style.
 %% ============================================================================
 \documentclass[journal]{IEEEtran}
@@ -941,14 +941,23 @@ injection affects only IP traffic, so the CRIU control socket (AF\_UNIX) is
 untouched and \texttt{full} restore (no page server) is an RTT-independent
 reference. This is emulated latency on one host (a true two-machine
 deployment remains future work, \S\ref{sec:limitations}), but it exercises
-the real TCP stack under non-trivial delay.
+the real TCP stack under non-trivial delay. What it does not reproduce is
+cross-host bandwidth contention or NIC behaviour, so a two-machine
+confirmation is the primary open validation of the crossover
+(\S\ref{sec:future}).
 
 The effect of prefetch \emph{reverses} with RTT
 (Fig.~\ref{fig:crosshost}, Table~\ref{tab:crosshost}). The loopback row of
 this $n\!=\!10$ sweep ($626\!\to\!1{,}198$\,ms, $+91\,\%$) reproduces the
 $n\!=\!20$ headline ($650\!\to\!1{,}227$\,ms, $+88\,\%$) within run-to-run
 variation; the small offset is the smaller sample, not a different regime.
-There is a crossover near $\approx\!125\,\mu$s RTT:
+Fixed prefetch crosses from significantly harmful to significantly beneficial
+between $100$ and $150\,\mu$s RTT: at $100\,\mu$s fixed ($2{,}455\!\pm\!72$\,ms,
+$95\,\%$ CI) is still above lazy ($2{,}300\!\pm\!7$) with non-overlapping CIs,
+while at $150\,\mu$s fixed ($2{,}919\!\pm\!59$) is below lazy
+($3{,}126\!\pm\!19$), again non-overlapping. The crossover is therefore
+bracketed by these two measurements, not interpolated from noise; we use its
+${\approx}125\,\mu$s midpoint as shorthand:
 
 \begin{itemize}
 \item \textbf{Below the crossover (congestion-bound).} Demand-only lazy is
@@ -967,11 +976,15 @@ Below the crossover the adaptive controller tracks demand-only lazy
 ($640$ vs.\ $626$\,ms at loopback, $1{,}642$ vs.\ $1{,}649$ at $60\,\mu$s),
 which is exactly right: there lazy is optimal and the controller's
 duplicate/queue signals correctly disable the harmful prefetch. Above the
-crossover its behaviour is inconsistent, because those same congestion
-signals were never designed for the latency-bound regime. Near the crossover
-it flaps: at $150\,\mu$s it is the worst of the three modes ($3{,}208$\,ms,
-above both lazy $3{,}126$ and fixed $2{,}919$), enabling and disabling
-prefetch within a single restore. Further out it happens to drift back toward
+crossover its behaviour degrades, because those same congestion signals were
+never designed for the latency-bound regime. Just below the crossover the
+controller still helps: at $100\,\mu$s it disables the still-harmful prefetch
+and is the fastest mode ($2{,}230\!\pm\!25$\,ms, below lazy
+$2{,}300\!\pm\!7$ and fixed $2{,}455\!\pm\!72$). But at $150\,\mu$s, where
+fixed has turned beneficial, the controller keeps disabling and tracks lazy
+($3{,}208\!\pm\!74$ vs.\ lazy $3{,}126\!\pm\!19$; $95\,\%$ CIs overlap, so the
+two are not separable) while both trail fixed ($2{,}919\!\pm\!59$): it forgoes
+the win fixed now captures. Further out it happens to drift back toward
 prefetch and recovers most of the benefit ($10{,}906$ vs.\ fixed $10{,}462$
 at $1$\,ms, far below lazy $16{,}700$), but this is incidental rather than
 intended. At $2$\,ms its congestion-driven disable misfires outright, leaving
@@ -986,8 +999,10 @@ measured crossover before disabling is the natural next step
 \begin{table}[t]
 \centering
 \caption{PyTorch TTFR (ms) vs.\ injected RTT, $n\!=\!10$. Prefetch flips
-from harmful to beneficial near $125\,\mu$s. ``DNF'': demand-only lazy did
-not complete within the timeout.}
+from harmful to beneficial between $100$ and $150\,\mu$s. Cells are means over
+$n\!=\!10$; per-cell $95\,\%$ CIs range from $\pm6$\,ms (loopback lazy) to
+$\pm710$\,ms ($1$\,ms adaptive), with the near-crossover comparisons quantified
+in the text. ``DNF'': demand-only lazy did not complete within the timeout.}
 \label{tab:crosshost}
 \renewcommand{\arraystretch}{1.15}
 \setlength{\tabcolsep}{4pt}

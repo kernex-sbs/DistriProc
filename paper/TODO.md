@@ -1,109 +1,42 @@
-# DistriProc Paper Checklist
+# DistriProc Paper Status
 
-This checklist tracks the path from the current research prototype to a draftable paper.
+The draftable-paper checklist this file used to track is **done**. The paper is
+written, the canonical dataset is locked (n=20 on Linux 6.18.7), figures and tables
+are generated, and the artifact is reproducible. The live document is
+`paper/paper.tex`; claims contract is `paper/CLAIMS.md`. This file now tracks only what
+remains before submission.
 
-## 1. Lock The System
+## Done (was the old checklist §1-§9)
 
-- [x] Async prefetch moved off the fault path
-- [x] Adaptive mode implemented
-- [x] Redis workload uses a real working set
-- [x] Per-iteration handler logs are preserved
-- [x] Decide whether the current adaptive policy is the paper baseline — YES, current controller is the baseline
-- [x] Avoid further core behavior changes unless results justify them
+- System locked: async prefetch off fault path, adaptive controller, real Redis/Valkey
+  working set, preserved per-iteration logs.
+- Evaluation pipeline: combined dataset across `test_loop`, `redis`, `pytorch`; logs
+  under `eval/results/logs/`.
+- Canonical dataset: **n=20** loopback matrix (`eval/results/results.csv`), RTT sweep
+  **n=10** (`eval/results/crosshost*/`), cross-kernel 7.0.9 (`eval/results/kernel7/`).
+- Claims locked and reframed around **C0 (the RTT crossover)**; C1-C3 are the loopback
+  findings it contextualizes (`paper/CLAIMS.md`).
+- Paper written end to end (title -> conclusion + appendices), builds clean under
+  tectonic: ~13 pp, 0 undefined refs, 40/40 citations used.
+- Docs synced (`README.md`, `docs/howto.md`, `docs/evaluation.md`).
+- Two review passes applied (logic, consistency, em-dash sweep, RTT-narrative vs
+  Table VII, cost-model honesty, CIs on the RTT sweep).
 
-## 2. Stabilize The Evaluation Pipeline
+## Open before submission
 
-- [x] Stop overwriting `eval/results/results.csv` across separate runs (`--append` flag)
-- [x] Support one combined dataset covering `test_loop`, `redis`, and `pytorch`
-- [x] Ensure `lazy`, `lazy-prefetch`, and `lazy-adaptive` all appear in the final report
-- [x] Preserve per-iteration logs under `eval/results/logs/`
-- [x] Verify `make report` reflects the combined dataset, not only the most recent run
+- [ ] **Venue.** Targeting a traditional (subscription, no-APC) peer-reviewed venue.
+      Shortlist parked in `paper/VENUE_OPTIONS.md`. Decision pending. Drives the
+      running head, page-limit/overlength check, and double-blind (`\anontrue`) build.
+- [ ] **Two-machine cross-host run.** Real LAN A<->B validation of the crossover (the
+      n=10 sweep is netem-emulated on one host). Harness + procedure to be added
+      (`eval/crosshost_2machine.sh`, `REPRODUCE-2machine.md`); user runs; results fold
+      into a new §V "Real two-machine validation" subsection. This is the main
+      reviewer-objection closer.
+- [ ] **Final human proofread** for tone/flow (mechanical + logical layers are clean).
+- [ ] **Packaging** once venue is set: arXiv source tarball + camera-ready PDF, and the
+      submission `\anontrue` build if the venue is double-blind.
 
-## 3. Produce The Final Experimental Dataset
+## Not blockers (scoped as future work in the paper)
 
-- [x] Run `test_loop` with `full`, `lazy`, `lazy-prefetch`, `lazy-adaptive` (5 iterations)
-- [x] Run `redis` with `full`, `lazy`, `lazy-prefetch`, `lazy-adaptive` (5 iterations)
-- [x] Run `pytorch` with `full`, `lazy`, `lazy-prefetch`, `lazy-adaptive` (5 iterations)
-- [x] Use stable iteration counts (5 per config)
-- [x] Save raw CSV and logs for all runs (`eval/results/results.csv`, `eval/results/logs/`)
-- [x] Regenerate the report from the combined dataset (`eval/results/report.md`)
-
-## 4. Lock The Claims
-
-- [x] State exactly what the current system does — `paper/CLAIMS.md`
-- [x] State exactly what it does not do — `paper/CLAIMS.md`
-- [x] Keep writable remote-memory coherence out of scope — `paper/CLAIMS.md`
-- [x] Keep RDMA and DSM claims out of scope — `paper/CLAIMS.md`
-- [x] Frame the contribution as an adaptive post-restore remote-memory runtime — `paper/CLAIMS.md`
-- [x] Decide the 2-3 headline claims the paper will defend — C1/C2/C3 in `paper/CLAIMS.md`
-
-## 5. Prepare Figures And Tables
-
-- [ ] TTFR table for all workloads and modes — data in `eval/results/report.md`
-- [ ] Throughput table for all workloads and modes — data in `eval/results/report.md`
-- [ ] Page-fault / prefetched-pages table — data in `eval/results/report.md`
-- [ ] Figure showing why fixed prefetch fails (pytorch TTFR bar chart: 209/625/1159/686)
-- [ ] Figure showing adaptive backoff decisions from handler logs (`eval/results/logs/`)
-- [ ] Summary comparison: `lazy` vs `lazy-prefetch` vs `lazy-adaptive`
-
-## 6. Tighten Methodology
-
-- [ ] Document hardware and software exactly (CPU: AMD Ryzen 7 7735HS, 15GB RAM, kernel 6.18.7, CRIU 4.2)
-- [ ] Document benchmark procedure exactly (`make bench-paper` → `make report`)
-- [ ] Explain TTFR per workload (why pytorch lazy > full; why test_loop lazy << full)
-- [ ] Explain hit rate = 0% for all modes (async prefetch wins race; metric unreliable; paper must not cite it)
-- [ ] Explain Redis throughput shortfall: all lazy modes ~68% of full — TCP loopback overhead, not a claim failure
-- [ ] Explain why the Redis workload is now meaningful (10k keys, 13.77MB working set)
-- [ ] Write threats to validity
-
-## 7. Update Repo Docs
-
-- [x] Update `README.md` with adaptive mode and final evaluated findings
-- [x] Update `docs/howto.md` with `lazy-adaptive`, `--append`, `make bench-paper`, `make figures`
-- [x] Update `docs/evaluation.md` with the final combined results
-- [x] Verify all docs match the implementation and final claims
-
-## 8. Write The Paper
-
-- [x] Title
-- [x] Abstract
-- [x] Introduction
-- [x] Motivation (folded into §1 Introduction and §5 Evaluation)
-- [x] Background on CRIU lazy restore and `userfaultfd`
-- [x] Design
-- [x] Implementation
-- [x] Evaluation
-- [x] Discussion
-- [x] Related work
-- [x] Limitations
-- [x] Conclusion
-
-Draft: `paper/draft.md`
-
-## 9. Final Paper Sanity Check
-
-- [x] Every claim maps to a result — C1/C2/C3 verified against results.csv
-- [x] Every result maps to a reproducible command — `make bench-paper && make report`
-- [x] No stale claims remain — RDMA/DSM/coherence only in out-of-scope/limitations
-- [x] Novelty statement is precise and defensible — "adaptive controller using dup pressure + queue depth"
-- [x] The abstract matches the actual artifact — 5 errors found and corrected:
-      - "recovers 41%" → "reduces fixed-prefetch TTFR by 41%"
-      - "more than double" → "nearly double" (1.85×, not 2×)
-      - "doubles TTFR" → "increases TTFR by 85%"
-      - "45–58% on all workloads" → "20–58% across all workloads" (pytorch=20%)
-      - "~800 lines C, ~100 lines Python" → "~1200 lines C, ~300 lines Python"
-      - §4/§6 cross-references corrected to §5
-
-## 10. Submission Readiness
-
-- [ ] Final combined results checked into a stable location ✓ (`eval/results/results.csv` committed)
-- [ ] Final report generated ✓ (`eval/results/report.md` committed)
-- [ ] Paper draft complete
-- [ ] Technical accuracy review done
-- [ ] Overclaiming review done
-- [ ] Artifact instructions tested from scratch
-
-## Immediate Next Step
-
-Start section 4 (Lock The Claims) then section 8 (Write The Paper).
-Recommended order: claims → methodology notes → figures → paper draft → docs.
+RTT-aware controller, RDMA validation, writable coherence, learned thresholds,
+cross-architecture (ARM64 page sizes), PSI integration.

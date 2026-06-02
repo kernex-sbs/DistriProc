@@ -48,11 +48,12 @@ The following are explicitly out of scope for this paper:
 
 One sentence:
 
-> We present an adaptive userspace runtime that selects prefetch policy per control window
-> during the post-restore remote-memory phase of CRIU lazy restore, using duplicate-fetch
-> pressure and async queue depth as lightweight signals, and show that this avoids the TTFR
-> degradation caused by fixed prefetch policies on memory-heavy workloads while preserving
-> benefit on memory-light ones.
+> We show that whether fixed sequential prefetch helps or hurts post-restore TTFR in CRIU
+> lazy restore is governed by round-trip time, with a crossover between 100 and 150 us
+> (harmful below, where speculation congests the shared TCP channel; beneficial above,
+> where it hides serial fault latency), and present DistriProc, a userspace runtime whose
+> duplicate-pressure/queue-depth controller recovers the congestion-bound regression as
+> one workable operating point in that space.
 
 ---
 
@@ -142,7 +143,7 @@ RTT crossover (C0) the controller is conservative. It is a heuristic, not learne
 
 **TTFR (Time To First Request):** Wall-clock time from CRIU restore invocation to first
 successful application-level response (workload-specific probe). Measured per iteration,
-reported as mean ± stddev across 5 iterations.
+reported as mean ± 95% CI across n=20 iterations (RTT sweep: n=10).
 
 **Throughput:** Application-level ops/sec measured after TTFR probe, on the restored process
 (redis, test_loop) or a fresh inference process (pytorch — known limitation, stated in paper).
@@ -168,8 +169,8 @@ pressure instead.
 restore throughput (full=105,050 ops/sec; n=20 canonical dataset). This is a real cost
 of the TCP page server on a high-throughput in-memory workload. The paper must
 acknowledge this as a transport-layer limitation, not a policy failure. The adaptive
-controller does not fix TCP overhead. (Earlier pilot figure was ~68-69%/107k→73k;
-superseded by the n=20 6.18.7 matrix in paper.tex Table tab:throughput.)
+controller does not fix TCP overhead. (An earlier small-sample pilot reported a lower
+ratio; superseded by the n=20 6.18.7 matrix in paper.tex Table tab:throughput.)
 
 ---
 
