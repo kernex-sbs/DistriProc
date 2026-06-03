@@ -136,12 +136,12 @@ prefetch interacts with CRIU lazy restore in the post-restore remote-memory
 phase, and shows that whether prefetch helps or hurts is governed by one
 variable: round-trip time (RTT). At loopback RTT, fixed prefetch
 \emph{increases} memory-heavy TTFR by $88\,\%$ ($650\!\to\!1{,}227$\,ms,
-$n\!=\!20$) because speculative traffic congests the TCP channel shared with
-fault resolution, even as it cuts the fault count by $85\,\%$, so fault
-reduction is not a reliable proxy for TTFR. By injecting RTT with
-\texttt{netem} we locate a crossover near $\approx\!125\,\mu$s RTT: below it
-the channel is congestion-bound and prefetch is harmful; above it the
-channel is latency-bound and prefetch instead \emph{reduces} TTFR (by
+$n\!=\!20$) because speculative traffic contends with fault resolution for the
+shared page-server transport, even as it cuts the fault count by $85\,\%$, so
+fault reduction is not a reliable proxy for TTFR. By injecting RTT with
+\texttt{netem} we locate a crossover between $100$ and $150\,\mu$s RTT: below it
+the transport is congestion-bound and prefetch is harmful; above it the
+transport is latency-bound and prefetch instead \emph{reduces} TTFR (by
 $37\,\%$ at $1$\,ms RTT, where demand-only lazy serializes thousands of
 round trips). A real two-machine LAN run confirms the above-crossover regime
 on physical hardware, where prefetch cuts TTFR by $72\,\%$ at $311\,\mu$s.
@@ -171,8 +171,8 @@ network latency
 down a process restored from a checkpoint hinges on a single variable:
 round-trip time. We show that the same fixed prefetch policy
 \emph{increases} time-to-first-request (TTFR) by $88\,\%$ at loopback RTT
-yet \emph{reduces} it by $37\,\%$ once RTT exceeds $\approx\!125\,\mu$s; and,
-counter-intuitively, the harmful case cuts the page-fault count by
+yet \emph{reduces} it by $37\,\%$ once RTT exceeds a crossover between $100$
+and $150\,\mu$s; and, counter-intuitively, the harmful case cuts the page-fault count by
 $85\,\%$ even as latency worsens. This paper establishes that crossover for
 CRIU lazy restore and gives a userspace runtime, \distriproc, that acts on
 it.
@@ -201,13 +201,13 @@ systematically studied the policy question; the literature has tended to
 treat sequential prefetch as a uniformly beneficial default. The central
 empirical finding of this paper is that prefetch is neither uniformly
 beneficial nor uniformly harmful: its sign is set by round-trip time. At
-loopback RTT, speculative prefetch competes with fault-path traffic over the
-shared TCP channel, builds an async queue backlog, and delays synchronous
-fault resolution, increasing TTFR by $88\,\%$ on large-working-set workloads
-(Welch $t = -45.9$, $p < 10^{-9}$, $n = 20$), while \emph{reducing} page
-faults by $85\,\%$, so the conventional proxy metric points opposite to the
-observed latency. But this regime is bounded: injecting RTT with
-\texttt{netem} reveals a crossover near $\approx\!125\,\mu$s RTT, above
+loopback RTT, speculative prefetch competes with fault-path traffic for the
+shared page-server transport, builds an async queue backlog, and delays
+synchronous fault resolution, increasing TTFR by $88\,\%$ on large-working-set
+workloads (Welch $t = -45.9$, $p < 10^{-9}$, $n = 20$), while \emph{reducing}
+page faults by $85\,\%$, so the conventional proxy metric points opposite to
+the observed latency. But this regime is bounded: injecting RTT with
+\texttt{netem} reveals a crossover between $100$ and $150\,\mu$s RTT, above
 which prefetch's latency-hiding dominates its congestion cost and prefetch
 \emph{reduces} TTFR (by $37\,\%$ at $1$\,ms RTT). The paradox is thus a
 property of the congestion-bound, near-zero-RTT regime, not of prefetch in
@@ -234,7 +234,7 @@ using only locally observable signals, without kernel changes or RDMA.
 loopback RTT, fixed sequential prefetch increases PyTorch TTFR by $88\,\%$
 ($650 \to 1{,}227$\,ms) while \emph{reducing} page faults by $85\,\%$, so
 fault count is not a reliable proxy for latency. By injecting RTT with
-\texttt{netem} we then locate a crossover near $\approx\!125\,\mu$s: below
+\texttt{netem} we then locate a crossover between $100$ and $150\,\mu$s: below
 it prefetch is harmful (congestion-bound), above it prefetch \emph{reduces}
 TTFR (latency-bound, $-37\,\%$ at $1$\,ms; demand-only lazy even times out
 at $2$\,ms). This maps \emph{when} speculative prefetch helps post-restore
@@ -431,8 +431,8 @@ shrinks $W$ and $S$ before resorting to a full disable; and prefetch
 below $\drainthr\!=\!Q/32$). After a disable the controller observes a
 $16$-window cooldown before a probe re-enable. These thresholds were set by
 inspection of pilot runs and not tuned further; the controller is
-intentionally simple (a first paper-worthy policy, not a final production
-one), and \S\ref{sec:sensitivity} shows TTFR is insensitive to their exact
+intentionally simple, a research prototype rather than a production policy,
+and \S\ref{sec:sensitivity} shows TTFR is insensitive to their exact
 values.
 
 \begin{algorithm}[t]
@@ -470,9 +470,12 @@ controller therefore uses duplicate pressure and queue depth instead.
 \subsection{Cost Model}
 \label{sec:cost-model}
 
-The controller's threshold choices follow from a simple analytical model of
-the shared TCP channel. Let $r$ be the per-page round-trip time, $b$ the
-effective per-connection throughput in pages per second, and $F$ the number
+The controller's threshold choices follow from a simple analytical model. The
+fault path and the prefetch path use independent TCP connections, but both are
+served by one page server, so we model their shared serving resources (its
+transport path, socket buffers, NIC, and CPU) as a single abstract
+\emph{channel}. Let $r$ be the per-page round-trip time, $b$ the
+effective throughput of that channel in pages per second, and $F$ the number
 of unique pages the workload will fault on before TTFR. The expected TTFR
 of demand-only lazy restore is then
 \begin{equation}
@@ -569,10 +572,13 @@ exits cleanly on restore completion.
 \subsection{Setup}
 
 \textbf{Hardware:}\, AMD Ryzen 7 7735HS (8 cores), 15\,GB RAM,
-x86\_64.\, \textbf{Software:}\, Linux 6.18.7, CRIU 4.2, Python 3.14, PyTorch
-2.12 (CPU-only).\, \textbf{Transport:}\, TCP over the loopback interface
-(127.0.0.1). All experiments run on a single machine; this represents
-best-case network conditions.
+x86\_64.\, \textbf{Software:}\, Linux 6.18.7 (mainline kernel built from
+source), CRIU 4.2, Python 3.14, PyTorch 2.12 (CPU-only); the cross-kernel
+comparison (\S\ref{sec:crosskernel}) additionally uses the distribution's
+stock Linux 7.0.9.\, \textbf{Transport:}\, TCP over the loopback interface
+(127.0.0.1); \S\ref{sec:crosshost} injects RTT on this path and
+\S\ref{sec:twomachine} replaces it with a real two-machine LAN. The loopback
+baseline represents best-case network conditions.
 
 \textbf{Methodology.}\, Each configuration runs $n\!=\!20$ iterations. We
 report mean $\pm$ the $95\,\%$ confidence interval (CI) computed
@@ -580,7 +586,9 @@ from a Student's $t$-distribution with $n{-}1\!=\!19$ degrees of freedom
 ($t_{0.025,19}\!=\!2.093$). Pairwise comparisons use Welch's two-tailed
 $t$-test, which does not assume equal variances. TTFR is measured from the
 moment \texttt{criu restore} is invoked to the moment the workload responds
-to a probe request.
+to a probe request. We mark a $1{,}000$\,ms TTFR reference line (``H1'') on the
+bar charts as a practical sub-second interactivity target for a restored
+request-serving process; it is a readability aid, not a tuned parameter.
 
 \textbf{Workloads.}
 \begin{itemize}
@@ -725,13 +733,14 @@ Redis    & fixed vs.\ adaptive       &  +0.41 & 38.0 & $0.68$              \\
 At loopback RTT, fixed prefetch on PyTorch reduces page faults by $85\,\%$
 yet increases TTFR by $88\,\%$ (Fig.~\ref{fig:faults_vs_ttfr}); this is the
 congestion-bound regime, and \S\ref{sec:crosshost} shows the effect reverses
-once RTT exceeds $\approx\!125\,\mu$s. The paradox is explained by
-TCP channel dynamics. The prefetch worker generates a backlog of pending
-TCP reads on the secondary connection. Although this does not directly
-block the primary connection, it congests the page server's socket send
-buffer, delaying responses on the primary connection. The effect manifests
-as growing queue depth $q$ and ultimately increases wall-clock time per
-fault.
+once RTT exceeds the crossover (\S\ref{sec:crosshost}). The paradox arises
+from contention at the page server. The prefetch worker generates a backlog
+of pending TCP reads on the secondary connection. Although the two connections
+are independent, they converge at a single page server, so this backlog is
+consistent with contention in the server's transport path (shared socket send
+buffers, NIC, and CPU servicing) that delays responses on the primary
+connection. The effect manifests as growing queue depth $q$ and ultimately
+increases wall-clock time per fault.
 
 The $85\,\%$ fault reduction is real: far fewer faults fire. But each
 surviving fault takes longer to resolve because its resolution is delayed by
@@ -753,7 +762,7 @@ could feed a future tighter feedback loop.
   \includegraphics[width=0.78\textwidth]{fig4_faults_vs_ttfr.pdf}
   \caption{PyTorch page faults vs.\ TTFR. Fixed prefetch reduces faults
     $85\,\%$ but increases TTFR $88\,\%$. Fewer faults do not imply lower
-    latency when prefetch congests the fault-path TCP channel.}
+    latency when prefetch saturates the shared page-server transport.}
   \label{fig:faults_vs_ttfr}
 \end{figure*}
 
@@ -860,7 +869,9 @@ $80/50$ default is marked $^\star$.}
 
 \begin{table}[t]
 \centering
-\caption{Throughput. Percentages relative to full-restore baseline.}
+\caption{Throughput, as a percentage of the full-restore baseline. Values
+above $100\,\%$ (PyTorch) are run-to-run measurement noise once all pages are
+local, not a real speedup.}
 \label{tab:throughput}
 \renewcommand{\arraystretch}{1.15}
 \small
@@ -941,8 +952,9 @@ The results so far use a loopback page server, which is the best case for the
 fault path and the worst case for prefetch: with near-zero RTT, demand-only
 lazy pays almost nothing per fault, so speculative traffic can only add
 congestion. To test whether the paradox survives real network latency, we
-inject RTT on the page-transfer path with \texttt{tc netem} on the loopback
-interface and re-run the PyTorch matrix at each setting ($n\!=\!10$). The
+inject RTT on the page-transfer path with \texttt{tc netem}~\cite{hemminger2005netem}
+on the loopback interface and re-run the PyTorch matrix at each setting
+($n\!=\!10$). The
 injection affects only IP traffic, so the CRIU control socket (AF\_UNIX) is
 untouched and \texttt{full} restore (no page server) is an RTT-independent
 reference. This is emulated latency on one host, but it
@@ -1035,9 +1047,10 @@ RTT ($\mu$s) & Lazy & Fixed & Adaptive & Fixed vs.\ Lazy \\
     in the latency-bound regime (right). The adaptive controller tracks
     demand-only lazy below the crossover (optimal there); above it its
     congestion signals behave erratically (\S\ref{sec:crosshost}). Stars mark
-    the real two-machine LAN run at $311\,\mu$s (\S\ref{sec:twomachine}); real
-    fixed prefetch falls well below the emulated curve, so the single-host
-    sweep is conservative.}
+    the real two-machine LAN run at $311\,\mu$s (Linux $7.0.x$ on both hosts,
+    \S\ref{sec:twomachine}): fixed prefetch far below lazy confirms the
+    above-crossover regime on real hardware. Absolute magnitudes are not
+    comparable to the $6.18.7$ curves (different kernel).}
   \label{fig:crosshost}
 \end{figure}
 
@@ -1045,36 +1058,42 @@ RTT ($\mu$s) & Lazy & Fixed & Adaptive & Fixed vs.\ Lazy \\
 \label{sec:twomachine}
 
 The RTT sweep above is emulated on one host. To confirm the above-crossover
-regime on real hardware, we run the same PyTorch matrix with the page server
-on a \emph{second physical machine} (a 4-core host, no GPU) reached over a
-wired gigabit LAN, leaving the restore side unchanged on the primary host.
-The measured round trip is $311\,\mu$s, above the crossover, so the model
-predicts prefetch should win. It does, by a wider margin than the emulation
-suggested (Table~\ref{tab:twomachine}, $n\!=\!50$): demand-only lazy averages
-$7{,}073\!\pm\!124$\,ms while fixed prefetch averages $1{,}985\!\pm\!28$\,ms,
-a $71.9\,\%$ reduction with non-overlapping $95\,\%$ CIs. The adaptive
-controller tracks the winning prefetch side here ($2{,}133\!\pm\!30$\,ms,
-$-69.8\,\%$ vs.\ lazy, within $7.5\,\%$ of fixed), rather than flapping as it
-did near the emulated crossover (\S\ref{sec:crosshost}).
+regime on real hardware, we repeat the PyTorch matrix with the page server on a
+\emph{second physical machine} (a 4-core host, no GPU) reached over a wired
+Ethernet LAN, leaving the restore side unchanged on the primary host. Both
+hosts run Linux~$7.0.x$, not the $6.18.7$ of the single-host sweep, so this is
+a clean same-kernel comparison across restore modes on real hardware rather
+than a like-for-like overlay on the \texttt{netem} curves. The round trip,
+measured with \texttt{ping} (mean of $20$ probes), is $311\,\mu$s, above the
+crossover, so the model predicts prefetch should win.
 
-Two points follow. First, the crossover is not an artifact of \texttt{netem}:
-the sign of the prefetch effect flips on genuine cross-host hardware exactly
-as the emulation predicted. Second, the emulation was \emph{conservative}. At
-a comparable $300\,\mu$s the \texttt{netem} sweep showed only a $16\,\%$
-prefetch benefit (Table~\ref{tab:crosshost}), whereas the real LAN shows
-$72\,\%$. The gap is real cross-host bandwidth contention, which delay
-injection on loopback does not model: under that contention demand-only lazy
-serializes a transfer per fault, while prefetch pipelines and hides it. The
-single-host sweep therefore understates, not inflates, the benefit of
-prefetch above the crossover.
+It does, decisively (Table~\ref{tab:twomachine}, $n\!=\!50$): demand-only lazy
+averages $7{,}073\!\pm\!124$\,ms while fixed prefetch averages
+$1{,}985\!\pm\!28$\,ms, a $71.9\,\%$ reduction with non-overlapping $95\,\%$
+CIs. The adaptive controller tracks the winning prefetch side here
+($2{,}133\!\pm\!30$\,ms, $-69.8\,\%$ vs.\ lazy, within $7.5\,\%$ of fixed),
+rather than flapping as it did near the emulated crossover
+(\S\ref{sec:crosshost}). This is the central prediction of the crossover,
+confirmed on genuine cross-host hardware: above the crossover the sign of the
+prefetch effect is positive, not an artifact of \texttt{netem}.
+
+We deliberately do not read this magnitude against the $6.18.7$ \texttt{netem}
+sweep. The two-machine hosts run a different kernel, and
+\S\ref{sec:crosskernel} shows the $7.0$ series alone shifts the lazy baseline
+several-fold; the higher absolute TTFR here is consistent with both that kernel
+shift and real cross-host transport effects (NIC, interrupts, buffering) that
+loopback delay injection does not reproduce, and a single operating point
+cannot separate them. The claim we make is the clean one: above the crossover,
+on real hardware and a single kernel, fixed prefetch beats demand-only lazy by
+a wide, statistically unambiguous margin.
 
 \begin{table}[t]
 \centering
 \caption{Real two-machine PyTorch TTFR (ms $\pm$ $95\,\%$ CI, $n\!=\!50$).
-Page server on a second physical host over a wired LAN (measured RTT
-$311\,\mu$s, above the crossover). Prefetch is strongly beneficial, as the
-crossover predicts, and by a wider margin than the emulated sweep at a
-comparable RTT.}
+Page server on a second physical host over a wired LAN; both hosts run Linux
+$7.0.x$ (cf.\ the $6.18.7$ single-host sweep, so absolute magnitudes are not
+directly comparable). Measured RTT $311\,\mu$s, above the crossover. Fixed
+prefetch is strongly beneficial, as the crossover predicts.}
 \label{tab:twomachine}
 \renewcommand{\arraystretch}{1.15}
 \setlength{\tabcolsep}{5pt}
@@ -1169,12 +1188,16 @@ controller disables immediately (PyTorch: $97\,\%$ duplicate, $q\!=\!1454$;
 Redis: $98\,\%$, $q\!=\!541$).
 
 \textbf{Deployment guidance.}\, For operators considering CRIU lazy restore
-in production, our measurements suggest four operational rules. First,
+in production, our measurements suggest four operational starting points;
+these are calibrated on our single system and a deployment should re-measure
+its own crossover and throughput before adopting the specific thresholds.
+First,
 check the transport RTT against the crossover (\S\ref{sec:crosshost}): above
-$\approx\!125\,\mu$s, which covers most WAN and cross-host paths, prefetch
-hides latency and should stay \emph{enabled}. Many intra-datacenter and
-same-rack paths ($5$--$50\,\mu$s) and RDMA fabrics ($1$--$2\,\mu$s) sit
-\emph{below} the crossover, however, so the adaptive controller and the rest
+it (between $100$ and $150\,\mu$s) prefetch hides latency and should stay
+\emph{enabled}. This covers most cross-host LAN paths (typically
+$\gtrsim\!150\,\mu$s) and all WAN paths (milliseconds). Tight intra-datacenter
+and same-rack paths ($5$--$50\,\mu$s)~\cite{gao2016network} and RDMA fabrics
+($1$--$2\,\mu$s)~\cite{gu2017infiniswap} sit \emph{below} the crossover, however, so the adaptive controller and the rest
 of this guidance target that sub-crossover (loopback / same-host /
 RDMA-class) regime where prefetch can congest. Second, in that regime estimate the
 working-set ratio (touched pages before TTFR over total mapped pages); if it
@@ -1309,20 +1332,21 @@ generalize. Each is treated in turn.
 
 \textbf{Transport and RTT.}\, The baseline page server is TCP loopback;
 \S\ref{sec:crosshost} then injects RTT with \texttt{netem} to characterize
-the latency axis directly, locating the crossover near $\approx\!125\,\mu$s
-where prefetch flips from harmful to beneficial. The emulated sweep is
-confirmed on real hardware by a two-machine run at $311\,\mu$s
-(\S\ref{sec:twomachine}), which reproduces the above-crossover regime and
-shows the emulation was conservative. Two caveats remain. The emulated points
-capture added latency but not cross-host bandwidth contention, and the real
-two-machine measurement is a single RTT operating point rather than a full
-physical sweep across the crossover. And we did not evaluate RDMA, whose
-$\approx\!1$--$2\,\mu$s RTT sits deep in the congestion-bound regime where the
-controller applies; confirming this on RDMA hardware is future work.
+the latency axis directly, locating the crossover between $100$ and
+$150\,\mu$s where prefetch flips from harmful to beneficial. The above-crossover
+regime is confirmed on real hardware by a two-machine run at $311\,\mu$s
+(\S\ref{sec:twomachine}). Caveats remain. The emulated points capture added
+latency but not cross-host transport effects (NIC, interrupts, buffering); the
+real two-machine run does exercise those, but on a different kernel
+($7.0.x$ vs.\ $6.18.7$) and at a single RTT operating point, so it confirms the
+\emph{direction} of the crossover rather than supplying a like-for-like
+magnitude. A full physical RTT sweep on a fixed kernel remains future work, as
+does RDMA, whose $\approx\!1$--$2\,\mu$s RTT sits deep in the congestion-bound
+regime where the controller applies.
 
 \textbf{Controller is not RTT-aware.}\, The controller disables prefetch on
 congestion signals alone, which is correct below the crossover but ill-suited
-above it: there its behaviour is erratic, worst-of-both near the crossover
+above it: there its behaviour is erratic, worst of both near the crossover
 ($150\,\mu$s) and, at $2$\,ms RTT, slower than simply leaving prefetch on
 (\S\ref{sec:crosshost}). The fix, gating the disable decision on a measured
 RTT estimate relative to the crossover, is sketched in \S\ref{sec:future} but
@@ -1354,11 +1378,10 @@ the absolute TTFR and the regression \emph{magnitude} are kernel-dependent
 $\approx\!3\times$ higher and the fixed-prefetch regression is $+37\,\%$
 rather than $+88\,\%$, but the paradox and the controller's recovery both
 persist and remain statistically significant. We hypothesise that the
-magnitude shift stems from $7.0$-series changes in the mechanisms involved:
-the reworked swap-in path (the swap-table ``unified swapin'' work), batched
-large-folio fault/reclaim handling, and Accurate ECN (RFC~9768) enabled by
-default. We have not isolated which dominates, and a full sweep across kernel
-versions is future work.
+magnitude shift stems from $7.0$-series changes in the mechanisms involved,
+such as the reworked swap-in path, batched large-folio fault/reclaim handling,
+and TCP/ECN changes. We have not isolated which dominates, and a full sweep
+across kernel versions is future work.
 
 \textbf{Sample size.}\, We run $n\!=\!20$ iterations per configuration.
 The headline effects ($88\,\%$ TTFR change for fixed prefetch on PyTorch)
@@ -1375,8 +1398,8 @@ $p99$ TTFR), which would need substantially more iterations.
 Several directions follow naturally from the present work.
 
 \textbf{RTT-aware controller.}\, The most direct follow-up is to make the
-disable decision RTT-aware. \S\ref{sec:crosshost} shows a crossover near
-$\approx\!125\,\mu$s below which prefetch should be throttled and above
+disable decision RTT-aware. \S\ref{sec:crosshost} shows a crossover between
+$100$ and $150\,\mu$s below which prefetch should be throttled and above
 which it should be encouraged. The handler can estimate RTT cheaply from
 its own fault round-trips and gate the congestion-driven disable on whether
 the estimate sits below the crossover, so the policy converges to lazy on
@@ -1432,9 +1455,9 @@ We presented a measurement study of speculative prefetch in the CRIU
 lazy-restore post-restore phase, and \distriproc, a userspace runtime that
 acts on it. Our central finding is that whether fixed sequential prefetch
 helps or hurts is governed by round-trip time: at loopback RTT it increases
-memory-heavy TTFR by $88\,\%$ ($n\!=\!20$) by congesting the shared
-fault-path channel, while cutting page faults $85\,\%$, so fault reduction
-misleads, but above a crossover near $\approx\!125\,\mu$s RTT it instead
+memory-heavy TTFR by $88\,\%$ ($n\!=\!20$) by contending for the shared
+page-server transport, while cutting page faults $85\,\%$, so fault reduction
+misleads, but above a crossover between $100$ and $150\,\mu$s RTT it instead
 reduces TTFR (by $37\,\%$ at $1$\,ms), because demand-only lazy must
 serialize a full RTT per fault. A simple per-window controller using
 duplicate pressure and queue depth detects the congestion-bound regime and
@@ -1467,13 +1490,16 @@ and the link's utilization is
   \rho_{\!\textit{link}} \;=\; \frac{\lambda}{b}.
   \label{eq:rho-link}
 \end{equation}
-Modeling the channel as an $M\!/\!M\!/1$ queue with arrival rate $\lambda$
-and service rate $b$, mean queueing wait obeys
+Modeling the channel as an $M\!/\!M\!/1$ queue~\cite{kleinrock1975queueing}
+with arrival rate $\lambda$ and service rate $b$, mean queueing wait obeys
 \begin{equation}
   W \;=\; \frac{\rho_{\!\textit{link}}}{b\,(1-\rho_{\!\textit{link}})},
   \label{eq:meandelay}
 \end{equation}
-which diverges as $\rho_{\!\textit{link}}\!\to\!1$. By Little's law the
+which diverges as $\rho_{\!\textit{link}}\!\to\!1$. We use $M\!/\!M\!/1$ purely
+as an explanatory approximation: fault arrivals and TCP service are not
+Poisson, so this captures the \emph{shape} of the saturation transition (and
+why $q$ tracks it), not exact queueing waits. By Little's law the
 expected backlog observed at the prefetch MPSC queue is
 \begin{equation}
   q \;=\; \lambda \, W,
