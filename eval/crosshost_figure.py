@@ -111,12 +111,13 @@ def main():
     ax.set_yscale("log")
     ax.set_xlabel("Injected round-trip time (µs, log scale; leftmost = loopback)")
     ax.set_ylabel("PyTorch TTFR (ms, log scale)")
-    ax.legend(frameon=False, loc="upper left")
+    ax.legend(loc="upper left", frameon=True, facecolor="white",
+              framealpha=0.92, edgecolor="none")
 
-    # Annotate the two regimes.
-    ax.text(35, 480, "congestion-bound\n(prefetch harmful)", fontsize=8.5,
+    # Annotate the two regimes (placed in empty zones, clear of the curves/stars).
+    ax.text(32, 430, "congestion-bound\n(prefetch harmful)", fontsize=8.5,
             color="#333333", ha="center")
-    ax.text(330, 2600, "latency-bound\n(prefetch wins)", fontsize=8.5,
+    ax.text(1050, 1250, "latency-bound\n(prefetch wins)", fontsize=8.5,
             color="#333333", ha="center")
 
     for fmt in ("pdf", "png"):
