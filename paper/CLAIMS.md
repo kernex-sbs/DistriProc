@@ -21,7 +21,8 @@ signals indicate it is causing more harm than benefit.
 ## What The System Does — Precisely
 
 - Intercepts page faults on lazily-restored processes via `userfaultfd`
-- Serves faulted pages synchronously from a TCP page server (loopback in all experiments)
+- Serves faulted pages synchronously from a TCP page server (loopback baseline;
+  netem-injected RTT in §V-H, and a real two-machine LAN in §V-J)
 - Prefetches sequential pages asynchronously off the fault path (configurable window/stride)
 - Tracks duplicate fetch requests and async queue depth per 128-fault control window
 - Disables prefetch when duplicate pressure exceeds threshold or queue depth is large
@@ -50,31 +51,37 @@ One sentence:
 
 > We show that whether fixed sequential prefetch helps or hurts post-restore TTFR in CRIU
 > lazy restore is governed by round-trip time, with a crossover between 100 and 150 us
-> (harmful below, where speculation congests the shared TCP channel; beneficial above,
-> where it hides serial fault latency), and present DistriProc, a userspace runtime whose
-> duplicate-pressure/queue-depth controller recovers the congestion-bound regression as
-> one workable operating point in that space.
+> (harmful below, where speculation contends with fault resolution for the shared
+> page-server transport; beneficial above, where it hides serial fault latency), and
+> present DistriProc, a userspace runtime whose duplicate-pressure/queue-depth controller
+> recovers the congestion-bound regression as one workable operating point in that space.
 
 ---
 
 ## Headline Claims
 
-> **Updated to the n=20 mainline-6.18.7 dataset + the RTT/cross-kernel results.
+> **Updated to the n=20 mainline-6.18.7 dataset, the netem RTT sweep, the
+> cross-kernel results, and the real two-machine LAN validation (§V-J).
 > Canonical numbers live in `paper/paper.tex`.** The central claim is now C0
 > (the RTT crossover); C1–C3 are the loopback findings it contextualizes.
 
 ### C0 — Whether fixed prefetch helps or hurts post-restore TTFR is governed by RTT
 
 **Precise statement:**
-Fixed sequential prefetch is harmful below an RTT crossover (~125 µs) and
-beneficial above it. At loopback it increases PyTorch TTFR +88% (650→1227 ms);
-at 1 ms RTT it reduces TTFR −37% (16700→10462 ms); at 2 ms demand-only lazy
-times out while prefetch completes. Measured by injecting RTT with `netem`
-(`eval/crosshost_netem.sh`, n=10).
+Fixed sequential prefetch is harmful below an RTT crossover (between 100 and
+150 µs) and beneficial above it. At loopback it increases PyTorch TTFR +88%
+(650→1227 ms); at 1 ms RTT it reduces TTFR −37% (16700→10462 ms); at 2 ms
+demand-only lazy times out while prefetch completes. Measured by injecting RTT
+with `netem` (`eval/crosshost_netem.sh`, n=10), and confirmed on real hardware:
+a two-machine LAN run at 311 µs (both hosts Linux 7.0.x, n=50) gives fixed
+1985±28 ms vs lazy 7073±124 ms, −71.9% (`eval/crosshost_2machine.sh`).
 
-**Caveat:** RTT is emulated on one host (not two machines); RDMA untested. The
-controller is tuned for the sub-crossover (congestion-bound) regime and is
-conservative above the crossover.
+**Caveat:** the netem sweep is emulated on one host; the two-machine run
+confirms the direction on real hardware but at a single RTT and on a different
+kernel (7.0.x vs 6.18.7), so absolute magnitudes are not cross-comparable. RDMA
+untested. The controller is tuned for the sub-crossover (congestion-bound)
+regime; above the crossover its congestion-only signals behave erratically (not
+"conservative").
 
 ---
 
@@ -101,7 +108,8 @@ faster.
 **Precise statement:**
 A fixed sequential prefetch policy that is always enabled causes TTFR regression on
 memory-heavy workloads because async prefetch traffic competes with fault-path traffic
-over the same TCP connection, increasing queue backlog and delaying fault resolution.
+for the shared page-server transport (the two TCP connections are independent but
+converge at one page server), increasing queue backlog and delaying fault resolution.
 
 **Evidence (loopback):**
 - pytorch lazy=650ms, lazy-prefetch=1227ms → fixed prefetch +88% (Welch t=−45.9)
@@ -111,7 +119,8 @@ over the same TCP connection, increasing queue backlog and delaying fault resolu
 **Caveat the paper must state:**
 On memory-light workloads (redis, test_loop) fixed prefetch is not harmful (TTFR delta
 within noise). The failure mode is specific to large working sets AND to the
-sub-crossover RTT regime — above ~125 µs RTT fixed prefetch is beneficial (see C0).
+sub-crossover RTT regime — above the 100–150 µs crossover fixed prefetch is
+beneficial (see C0).
 
 ---
 
@@ -135,7 +144,8 @@ without regressing memory-light workloads.
 Adaptive ≈ plain lazy on TTFR: pytorch adaptive=655ms vs lazy=650ms (+5.5ms,
 t=−0.82, p=0.42 → statistically indistinguishable). The claim is "recovers the
 congestion-bound regression and reduces waste," not "adaptive always wins." Above the
-RTT crossover (C0) the controller is conservative. It is a heuristic, not learned.
+RTT crossover (C0) the controller's congestion-only signals behave erratically (it can
+flap near the crossover and mis-disable at high RTT). It is a heuristic, not learned.
 
 ---
 
