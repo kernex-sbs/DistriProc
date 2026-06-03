@@ -14,7 +14,7 @@ The original idea was broad process-level remote paging / remote memory. The cur
 
 `When Prefetch Hurts: RTT-Dependent Speculative Paging in CRIU Lazy Restore`
 
-Central finding: whether fixed sequential prefetch helps or hurts post-restore TTFR is governed by round-trip time. At loopback it hurts (PyTorch +88%, n=20) while cutting page faults 85%; above a ~125 µs RTT crossover it helps (−37% at 1 ms). Holds on both Linux 6.18.7 (+88%) and 7.0.9 (+37%). DistriProc is the userspace runtime that acts on it — a controller that disables prefetch in the congestion-bound regime. It decides how to fetch pages after lazy restore:
+Central finding: whether fixed sequential prefetch helps or hurts post-restore TTFR is governed by round-trip time. At loopback it hurts (PyTorch +88%, n=20) while cutting page faults 85%; above a crossover between 100 and 150 µs it helps (−37% at 1 ms). Holds on both Linux 6.18.7 (+88%) and 7.0.9 (+37%). Confirmed on real hardware by a two-machine LAN run (311 µs, both hosts 7.0.x, n=50: fixed −71.9% vs lazy). DistriProc is the userspace runtime that acts on it — a controller that disables prefetch in the congestion-bound regime. It decides how to fetch pages after lazy restore:
 
 - demand paging
 - asynchronous prefetch
@@ -186,6 +186,17 @@ That was identified as:
 - `UFFD_EVENT_UNMAP`
 
 The handler now treats `UNMAP`, `REMOVE`, `REMAP`, and `FORK` as explicit lifecycle events and exits cleanly on `UNMAP` after restore is finished.
+
+---
+
+> **⚠️ Sections 1–7 above are current. Sections 8–15 below are HISTORICAL
+> mid-project notes (pre-final, n=5-era result bands, "paper not yet written"
+> framing) kept for provenance only. For the current state use the canonical
+> docs: `paper/paper.tex` (the paper), `paper/CLAIMS.md` (locked claims),
+> `paper/TODO.md` (what's left before submission). Do not trust numbers or
+> "next steps" in the sections below.**
+
+---
 
 ## 8. Benchmark Harness State
 
