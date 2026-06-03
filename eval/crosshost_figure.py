@@ -40,6 +40,21 @@ def load():
     return d
 
 
+def load_2machine():
+    """Real two-machine run: {mode: (rtt_us, mean_ttfr)} from results.csv."""
+    p = os.path.join(ROOT, "eval/results", "crosshost-2machine", "results.csv")
+    if not os.path.exists(p):
+        return None
+    vals = defaultdict(list)
+    rtt = None
+    for r in csv.DictReader(open(p)):
+        v = int(r["ttfr_ms"])
+        if v >= 0:
+            vals[r["mode"]].append(v)
+            rtt = int(r["rtt_us"])
+    return rtt, {m: st.mean(xs) for m, xs in vals.items() if xs}
+
+
 def main():
     d = load()
     rtts = sorted({k[0] for k in d})
@@ -66,6 +81,25 @@ def main():
         xs, ys = series(m)
         ax.plot(xs, ys, marker="o", markersize=5, linewidth=1.8,
                 color=COLORS[m], label=LABELS[m], zorder=3)
+
+    # Overlay the real two-machine points (star markers) at the measured LAN RTT.
+    tm = load_2machine()
+    if tm:
+        tm_rtt, tm_means = tm
+        first = True
+        for m in modes:
+            if m in tm_means:
+                ax.scatter(tm_rtt, tm_means[m], marker="*", s=220,
+                           color=COLORS[m], edgecolor="black", linewidth=0.7,
+                           zorder=6, label="Real two-machine (LAN)" if first else None)
+                first = False
+        # Point out that real fixed-prefetch sits well below the emulated curve.
+        if "lazy-prefetch" in tm_means:
+            ax.annotate("real LAN, %d µs\n(emulation was\nconservative)" % tm_rtt,
+                        xy=(tm_rtt, tm_means["lazy-prefetch"]),
+                        xytext=(tm_rtt * 1.6, tm_means["lazy-prefetch"] * 0.42),
+                        fontsize=8.5, color="#222222", ha="left", va="top",
+                        arrowprops=dict(arrowstyle="->", color="#222222", lw=0.8))
 
     # Crossover band: prefetch flips between RTT 100 and 150 us.
     ax.axvspan(100, 150, color="#c0392b", alpha=0.08, zorder=0)
