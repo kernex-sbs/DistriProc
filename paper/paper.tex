@@ -504,7 +504,7 @@ Eq.~\eqref{eq:condition} also locates the crossover: it is the operating
 point where the per-fault prefetch load meets the per-page round trip, so it
 is set by RTT \emph{relative to} the page server's per-page service time
 $1/b$ rather than by RTT alone. Prefetch flips from harmful to beneficial as
-$r$ rises past $(1+S(1{-}\delta))/b$ --- a bandwidth-delay-product effect ---
+$r$ rises past $(1+S(1{-}\delta))/b$ (a bandwidth-delay-product effect),
 which is why the measured crossover is a property of the transport, not a
 fixed RTT.
 The controller cannot measure $r$, $b$, or $\delta$ directly, but $q$ and
@@ -1365,8 +1365,8 @@ contention at the shared page-server transport, but we did not directly
 instrument that transport: socket-buffer occupancy, TCP retransmission
 counters, and NIC/CPU utilization at the page server were not recorded. The
 account is therefore \emph{inferential}, supported by the observed queue-depth
-growth ($q$) and by the RTT crossover (\S\ref{sec:crosshost}) --- both of
-which behave as transport contention predicts --- but not by direct
+growth ($q$) and by the RTT crossover (\S\ref{sec:crosshost}), both of which
+behave as transport contention predicts, but not by direct
 resource-level measurement. Confirming the mechanism with server-side socket
 and NIC instrumentation is future work.
 
