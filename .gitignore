@@ -38,3 +38,6 @@ eval/results/*.log
 .planning/STATE.md.old
 # Cross-kernel run logs
 eval/results/kernel7/logs/
+
+# two-machine per-iteration logs (bulky; results.csv is the artifact)
+eval/results/crosshost-2machine/*_iter*.log

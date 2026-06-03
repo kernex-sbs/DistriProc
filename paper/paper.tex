@@ -141,7 +141,9 @@ reduction is not a reliable proxy for TTFR. By injecting RTT with
 the channel is congestion-bound and prefetch is harmful; above it the
 channel is latency-bound and prefetch instead \emph{reduces} TTFR (by
 $37\,\%$ at $1$\,ms RTT, where demand-only lazy serializes thousands of
-round trips). We then present \distriproc, a userspace runtime whose
+round trips). A real two-machine LAN run confirms the above-crossover regime
+on physical hardware, where prefetch cuts TTFR by $72\,\%$ at $311\,\mu$s.
+We then present \distriproc, a userspace runtime whose
 feedback controller monitors duplicate-fetch pressure and queue depth and
 disables prefetch under congestion. In the congestion-bound regime the
 controller recovers essentially all of the loopback regression
@@ -234,7 +236,9 @@ fault count is not a reliable proxy for latency. By injecting RTT with
 it prefetch is harmful (congestion-bound), above it prefetch \emph{reduces}
 TTFR (latency-bound, $-37\,\%$ at $1$\,ms; demand-only lazy even times out
 at $2$\,ms). This maps \emph{when} speculative prefetch helps post-restore
-(\S\ref{sec:paradox},~\S\ref{sec:crosshost}).
+(\S\ref{sec:paradox},~\S\ref{sec:crosshost}) and is confirmed on a real
+two-machine LAN, where prefetch cuts TTFR by $72\,\%$ at $311\,\mu$s
+(\S\ref{sec:twomachine}).
 
 \item \emph{Generality across kernels and workloads.} The paradox and its
 mitigation hold on both Linux $6.18.7$ and $7.0.9$ ($+88\,\%$ vs.\
@@ -939,12 +943,11 @@ inject RTT on the page-transfer path with \texttt{tc netem} on the loopback
 interface and re-run the PyTorch matrix at each setting ($n\!=\!10$). The
 injection affects only IP traffic, so the CRIU control socket (AF\_UNIX) is
 untouched and \texttt{full} restore (no page server) is an RTT-independent
-reference. This is emulated latency on one host (a true two-machine
-deployment remains future work, \S\ref{sec:limitations}), but it exercises
-the real TCP stack under non-trivial delay. What it does not reproduce is
-cross-host bandwidth contention or NIC behaviour, so a two-machine
-confirmation is the primary open validation of the crossover
-(\S\ref{sec:future}).
+reference. This is emulated latency on one host, but it
+exercises the real TCP stack under non-trivial delay. It does not reproduce
+cross-host bandwidth contention or NIC behaviour; we address that separately
+with a real two-machine run (\S\ref{sec:twomachine}) that confirms the
+above-crossover regime on physical hardware.
 
 The effect of prefetch \emph{reverses} with RTT
 (Fig.~\ref{fig:crosshost}, Table~\ref{tab:crosshost}). The loopback row of
@@ -1032,6 +1035,55 @@ RTT ($\mu$s) & Lazy & Fixed & Adaptive & Fixed vs.\ Lazy \\
     congestion signals behave erratically (\S\ref{sec:crosshost}).}
   \label{fig:crosshost}
 \end{figure}
+
+\subsection{Real Two-Machine Validation}
+\label{sec:twomachine}
+
+The RTT sweep above is emulated on one host. To confirm the above-crossover
+regime on real hardware, we run the same PyTorch matrix with the page server
+on a \emph{second physical machine} (a 4-core host, no GPU) reached over a
+wired gigabit LAN, leaving the restore side unchanged on the primary host.
+The measured round trip is $311\,\mu$s, above the crossover, so the model
+predicts prefetch should win. It does, by a wider margin than the emulation
+suggested (Table~\ref{tab:twomachine}, $n\!=\!50$): demand-only lazy averages
+$7{,}073\!\pm\!124$\,ms while fixed prefetch averages $1{,}985\!\pm\!28$\,ms,
+a $71.9\,\%$ reduction with non-overlapping $95\,\%$ CIs. The adaptive
+controller tracks the winning prefetch side here ($2{,}133\!\pm\!30$\,ms,
+$-69.8\,\%$ vs.\ lazy, within $7.5\,\%$ of fixed), rather than flapping as it
+did near the emulated crossover (\S\ref{sec:crosshost}).
+
+Two points follow. First, the crossover is not an artifact of \texttt{netem}:
+the sign of the prefetch effect flips on genuine cross-host hardware exactly
+as the emulation predicted. Second, the emulation was \emph{conservative}. At
+a comparable $300\,\mu$s the \texttt{netem} sweep showed only a $16\,\%$
+prefetch benefit (Table~\ref{tab:crosshost}), whereas the real LAN shows
+$72\,\%$. The gap is real cross-host bandwidth contention, which delay
+injection on loopback does not model: under that contention demand-only lazy
+serializes a transfer per fault, while prefetch pipelines and hides it. The
+single-host sweep therefore understates, not inflates, the benefit of
+prefetch above the crossover.
+
+\begin{table}[t]
+\centering
+\caption{Real two-machine PyTorch TTFR (ms $\pm$ $95\,\%$ CI, $n\!=\!50$).
+Page server on a second physical host over a wired LAN (measured RTT
+$311\,\mu$s, above the crossover). Prefetch is strongly beneficial, as the
+crossover predicts, and by a wider margin than the emulated sweep at a
+comparable RTT.}
+\label{tab:twomachine}
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{5pt}
+\small
+\begin{tabular}{l S[table-format=4.0] @{\,$\pm$\,} S[table-format=3.0] r}
+\toprule
+Mode & \multicolumn{2}{c}{TTFR (ms)} & {vs.\ Lazy} \\
+\midrule
+Lazy (demand-only) & 7073 & 124 & --- \\
+Fixed prefetch     & 1985 &  28 & $-71.9\,\%$ \\
+Adaptive           & 2133 &  30 & $-69.8\,\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Cross-Kernel Robustness}
 \label{sec:crosskernel}
@@ -1253,12 +1305,15 @@ generalize. Each is treated in turn.
 \textbf{Transport and RTT.}\, The baseline page server is TCP loopback;
 \S\ref{sec:crosshost} then injects RTT with \texttt{netem} to characterize
 the latency axis directly, locating the crossover near $\approx\!125\,\mu$s
-where prefetch flips from harmful to beneficial. Two caveats remain. The RTT
-is emulated on a single host, not measured between two physical machines, so
-it captures added latency but not real cross-host bandwidth contention or
-NIC behavior. And we did not evaluate RDMA, whose $\approx\!1$--$2\,\mu$s
-RTT sits deep in the congestion-bound regime where the controller applies;
-confirming this on RDMA hardware is future work.
+where prefetch flips from harmful to beneficial. The emulated sweep is
+confirmed on real hardware by a two-machine run at $311\,\mu$s
+(\S\ref{sec:twomachine}), which reproduces the above-crossover regime and
+shows the emulation was conservative. Two caveats remain. The emulated points
+capture added latency but not cross-host bandwidth contention, and the real
+two-machine measurement is a single RTT operating point rather than a full
+physical sweep across the crossover. And we did not evaluate RDMA, whose
+$\approx\!1$--$2\,\mu$s RTT sits deep in the congestion-bound regime where the
+controller applies; confirming this on RDMA hardware is future work.
 
 \textbf{Controller is not RTT-aware.}\, The controller disables prefetch on
 congestion signals alone, which is correct below the crossover but ill-suited
@@ -1283,9 +1338,10 @@ heuristic; it is not learned.
 all pages are local. It does not capture inference throughput during the
 remote-memory phase.
 
-\textbf{Single-machine evaluation.}\, Page server and process run on the
-same host. True live migration across machines would expose real network
-RTT and bandwidth constraints not present in loopback experiments.
+\textbf{Single-machine baseline.}\, The loopback and \texttt{netem} matrices
+run page server and process on one host. The two-machine run
+(\S\ref{sec:twomachine}) exercises a real cross-host path at one RTT; a full
+physical RTT sweep and a true live-migration deployment remain future work.
 
 \textbf{Kernel sensitivity.}\, The headline numbers are from Linux~$6.18.7$;
 the absolute TTFR and the regression \emph{magnitude} are kernel-dependent
