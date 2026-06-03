@@ -27,12 +27,13 @@ remains before submission.
 - [ ] **Venue.** Targeting a traditional (subscription, no-APC) peer-reviewed venue.
       Shortlist parked in `paper/VENUE_OPTIONS.md`. Decision pending. Drives the
       running head, page-limit/overlength check, and double-blind (`\anontrue`) build.
-- [ ] **Two-machine cross-host run.** Real LAN A<->B validation of the crossover (the
-      n=10 sweep is netem-emulated on one host). Harness + procedure **ready**
-      (`eval/crosshost_2machine.sh`, `REPRODUCE-2machine.md`) — user runs on A with B on
-      the wired LAN, then pastes `eval/results/crosshost-2machine/results.csv` back to
-      fold into a new §V "Real two-machine validation" subsection. Main reviewer-objection
-      closer.
+- [x] **Two-machine cross-host run.** DONE (commit fa8c460). Real LAN A<->B,
+      page server on a second physical host, measured RTT 311us, n=50:
+      lazy 7073+-124, fixed 1985+-28 (-71.9%), adaptive 2133+-30. Confirms the
+      above-crossover regime on real hardware; netem was conservative (-16% vs the
+      real -72%). Folded into §V "Real Two-Machine Validation" (Table tab:twomachine).
+      Data: `eval/results/crosshost-2machine/results.csv`. Open follow-on (future
+      work, not a blocker): a full *physical* RTT sweep across the crossover, and RDMA.
 - [ ] **Final human proofread** for tone/flow (mechanical + logical layers are clean).
 - [ ] **Packaging** once venue is set: arXiv source tarball + camera-ready PDF, and the
       submission `\anontrue` build if the venue is double-blind.
