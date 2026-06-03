@@ -115,8 +115,8 @@ def main():
               framealpha=0.92, edgecolor="none")
 
     # Annotate the two regimes (placed in empty zones, clear of the curves/stars).
-    ax.text(32, 430, "congestion-bound\n(prefetch harmful)", fontsize=8.5,
-            color="#333333", ha="center")
+    ax.text(13, 430, "congestion-bound\n(prefetch harmful)", fontsize=8.5,
+            color="#333333", ha="left")
     ax.text(1050, 1250, "latency-bound\n(prefetch wins)", fontsize=8.5,
             color="#333333", ha="center")
 
