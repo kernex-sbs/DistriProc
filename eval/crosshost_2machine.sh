@@ -88,7 +88,10 @@ handler_args() {  # mode -> lazy_handler flags
 }
 
 stop_remote_server() {
-    ssh "$PAGE_SERVER_SSH" "test -f '$REMOTE_PID_FILE' && kill \$(cat '$REMOTE_PID_FILE') 2>/dev/null; rm -f '$REMOTE_PID_FILE'" 2>/dev/null || true
+    # Kill by pidfile AND pkill any stray page servers: a survivor keeps cached
+    # fds to the previous iteration's (now rsync-replaced) images and serves
+    # garbage, crashing the next restore. Belt and suspenders.
+    ssh "$PAGE_SERVER_SSH" "test -f '$REMOTE_PID_FILE' && kill \$(cat '$REMOTE_PID_FILE') 2>/dev/null; pkill -f 'criu_page_server.py.*--port $PORT' 2>/dev/null; rm -f '$REMOTE_PID_FILE'" 2>/dev/null || true
 }
 cleanup() { cleanup_pids; stop_remote_server; }
 trap cleanup EXIT INT TERM
@@ -109,13 +112,27 @@ log_info "Measured LAN RTT to $PAGE_SERVER_HOST: ${RTT_US} us"
 
 start_remote_server() {  # $1=local image dir
     local dir="$1"
-    ssh "$PAGE_SERVER_SSH" "mkdir -p '$REMOTE_WORK'"
-    rsync -a --delete -e ssh "$dir/" "$PAGE_SERVER_SSH:$REMOTE_WORK/"
-    ssh "$PAGE_SERVER_SSH" "cd '$REMOTE_ROOT' && ${B_PYTHONPATH:+PYTHONPATH=$B_PYTHONPATH }PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python nohup python3 '$REMOTE_PS' --host 0.0.0.0 --images-dir '$REMOTE_WORK' --port '$PORT' > '$REMOTE_WORK/page_server.log' 2>&1 & echo \$! > '$REMOTE_PID_FILE'" >/dev/null 2>&1 &
+    # Kill any survivor on this port first, so the fresh server binds and serves
+    # the images we are about to rsync (not stale cached fds).
+    ssh "$PAGE_SERVER_SSH" "pkill -f 'criu_page_server.py.*--port $PORT' 2>/dev/null; rm -rf '$REMOTE_WORK'; mkdir -p '$REMOTE_WORK'"
+    sleep 0.5
+    if ! rsync -a --delete -e ssh "$dir/" "$PAGE_SERVER_SSH:$REMOTE_WORK/"; then
+        log_error "rsync of images A->B failed (partial copy would stall page serving)"; return 1
+    fi
+    # Verify B sees the same image files A dumped (catch silent partial copies).
+    local na nb
+    na=$(ls "$dir"/*.img 2>/dev/null | wc -l)
+    nb=$(ssh "$PAGE_SERVER_SSH" "ls '$REMOTE_WORK'/*.img 2>/dev/null | wc -l" 2>/dev/null || echo 0)
+    if [ "$na" != "$nb" ]; then
+        log_error "image-file count mismatch A=$na B=$nb after rsync"; return 1
+    fi
+    # -u = unbuffered, so the startup banner + any traceback survive in the log.
+    ssh "$PAGE_SERVER_SSH" "cd '$REMOTE_ROOT' && ${B_PYTHONPATH:+PYTHONPATH=$B_PYTHONPATH }PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python nohup python3 -u '$REMOTE_PS' --host 0.0.0.0 --images-dir '$REMOTE_WORK' --port '$PORT' > '$REMOTE_WORK/page_server.log' 2>&1 & echo \$! > '$REMOTE_PID_FILE'" >/dev/null 2>&1 &
     # Wait until A can connect to B:PORT.
     local deadline=$(( $(date +%s) + 10 ))
     while [ "$(date +%s)" -lt "$deadline" ]; do
         if python3 -c "import socket,sys; socket.create_connection(('$PAGE_SERVER_HOST',$PORT),2).close()" 2>/dev/null; then
+            log_info "B page_map: $(ssh "$PAGE_SERVER_SSH" "grep -hE 'Total pages indexed|pages mapped|Error|Traceback' '$REMOTE_WORK/page_server.log'" 2>/dev/null | tr '\n' ' | ')"
             return 0
         fi
         sleep 0.3
@@ -151,8 +168,21 @@ for mode in $MODES; do
     restored_pid=$(criu_restore_lazy "$work_dir")
 
     TTFR_MS=0; workload_ttfr_probe "$work_dir" || true; ttfr_ms="$TTFR_MS"
+    if [ "$ttfr_ms" = "-1" ]; then
+        alive=$(kill -0 "$restored_pid" 2>/dev/null && echo yes || echo no)
+        log_warn "[pytorch/$mode] iter $iter probe FAILED: restored pid=$restored_pid alive=$alive"
+        log_warn "--- workload.log tail ---"; tail -20 "$work_dir/workload.log" >&2 2>/dev/null || true
+        log_warn "--- restore.log tail ---"; tail -15 "$work_dir/restore.log" >&2 2>/dev/null || true
+        log_warn "--- remote page_server.log tail ---"
+        ssh "$PAGE_SERVER_SSH" "tail -15 '$REMOTE_WORK/page_server.log'" 2>/dev/null >&2 || true
+    fi
     THROUGHPUT=0; workload_throughput || true; throughput="$THROUGHPUT"
     log_info "[pytorch/$mode] iter $iter TTFR=${ttfr_ms}ms"
+
+    # Preserve all logs for diagnosis (not just handler.log).
+    for lg in workload restore handler page_server; do
+        cp "$work_dir/$lg.log" "$OUT_DIR/pytorch_${mode}_iter${iter}_${lg}.log" 2>/dev/null || true
+    done
 
     [ -n "$restored_pid" ] && kill -9 "$restored_pid" 2>/dev/null || true
     if [ -n "${handler_pid:-}" ]; then
@@ -163,7 +193,6 @@ for mode in $MODES; do
     stop_remote_server
 
     csv_append "$CSV" "pytorch,${mode},${iter},${ttfr_ms},${throughput},${stats},${checkpoint_ms},${RTT_US}"
-    cp "$work_dir/handler.log" "$OUT_DIR/pytorch_${mode}_iter${iter}_handler.log" 2>/dev/null || true
     workload_cleanup
     rm -rf "$work_dir"
   done
