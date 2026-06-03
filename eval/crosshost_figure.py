@@ -95,12 +95,13 @@ def main():
                            color=COLORS[m], edgecolor="black", linewidth=0.7,
                            zorder=6, label="Real two-machine (LAN)" if first else None)
                 first = False
-        # Point out that real fixed-prefetch sits well below the emulated curve.
+        # Tag the fixed-prefetch star (the "emulation conservative" point is in
+        # the caption). Short label, centered, kept inside the axes.
         if "lazy-prefetch" in tm_means:
-            ax.annotate("real LAN, %d µs\n(emulation was\nconservative)" % tm_rtt,
+            ax.annotate("real LAN\n%d µs" % tm_rtt,
                         xy=(tm_rtt, tm_means["lazy-prefetch"]),
-                        xytext=(tm_rtt * 1.6, tm_means["lazy-prefetch"] * 0.42),
-                        fontsize=8.5, color="#222222", ha="left", va="top",
+                        xytext=(tm_rtt * 1.9, tm_means["lazy-prefetch"] * 0.62),
+                        fontsize=8.5, color="#222222", ha="center", va="top",
                         arrowprops=dict(arrowstyle="->", color="#222222", lw=0.8))
 
     # Crossover band: prefetch flips between RTT 100 and 150 us.
