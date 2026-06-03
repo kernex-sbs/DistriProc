@@ -87,7 +87,9 @@ def main():
     if tm:
         tm_rtt, tm_means = tm
         first = True
-        for m in modes:
+        # Only the lazy and fixed stars: their contrast (lazy on its curve, fixed
+        # well below) is the message; adaptive overlaps fixed and is in the table.
+        for m in ("lazy", "lazy-prefetch"):
             if m in tm_means:
                 ax.scatter(tm_rtt, tm_means[m], marker="*", s=220,
                            color=COLORS[m], edgecolor="black", linewidth=0.7,
