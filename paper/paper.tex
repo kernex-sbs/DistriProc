@@ -500,6 +500,13 @@ budget:
   \frac{1 + S\,(1{-}\delta)}{b} \;\le\; r.
   \label{eq:condition}
 \end{equation}
+Eq.~\eqref{eq:condition} also locates the crossover: it is the operating
+point where the per-fault prefetch load meets the per-page round trip, so it
+is set by RTT \emph{relative to} the page server's per-page service time
+$1/b$ rather than by RTT alone. Prefetch flips from harmful to beneficial as
+$r$ rises past $(1+S(1{-}\delta))/b$ --- a bandwidth-delay-product effect ---
+which is why the measured crossover is a property of the transport, not a
+fixed RTT.
 The controller cannot measure $r$, $b$, or $\delta$ directly, but $q$ and
 $\rho$ each capture one side of the trade-off. Queue depth $q$ tracks link
 saturation: a growing queue is the direct signature of the second term in
@@ -588,7 +595,9 @@ $t$-test, which does not assume equal variances. TTFR is measured from the
 moment \texttt{criu restore} is invoked to the moment the workload responds
 to a probe request. We mark a $1{,}000$\,ms TTFR reference line (``H1'') on the
 bar charts as a practical sub-second interactivity target for a restored
-request-serving process; it is a readability aid, not a tuned parameter.
+request-serving process, following the classic ${\sim}1$\,s limit for
+keeping a conversational transaction interactive~\cite{miller1968response};
+it is a readability aid, not a tuned parameter.
 
 \textbf{Workloads.}
 \begin{itemize}
@@ -740,7 +749,9 @@ are independent, they converge at a single page server, so this backlog is
 consistent with contention in the server's transport path (shared socket send
 buffers, NIC, and CPU servicing) that delays responses on the primary
 connection. The effect manifests as growing queue depth $q$ and ultimately
-increases wall-clock time per fault.
+increases wall-clock time per fault. We did not directly instrument the
+page server's transport, so this attribution is inferential rather than
+measured at the resource level (\S\ref{sec:limitations}).
 
 The $85\,\%$ fault reduction is real: far fewer faults fire. But each
 surviving fault takes longer to resolve because its resolution is delayed by
@@ -762,7 +773,7 @@ could feed a future tighter feedback loop.
   \includegraphics[width=0.78\textwidth]{fig4_faults_vs_ttfr.pdf}
   \caption{PyTorch page faults vs.\ TTFR. Fixed prefetch reduces faults
     $85\,\%$ but increases TTFR $88\,\%$. Fewer faults do not imply lower
-    latency when prefetch saturates the shared page-server transport.}
+    latency when prefetch loads the shared page-server transport.}
   \label{fig:faults_vs_ttfr}
 \end{figure*}
 
@@ -1196,8 +1207,9 @@ check the transport RTT against the crossover (\S\ref{sec:crosshost}): above
 it (between $100$ and $150\,\mu$s) prefetch hides latency and should stay
 \emph{enabled}. This covers most cross-host LAN paths (typically
 $\gtrsim\!150\,\mu$s) and all WAN paths (milliseconds). Tight intra-datacenter
-and same-rack paths ($5$--$50\,\mu$s)~\cite{gao2016network} and RDMA fabrics
-($1$--$2\,\mu$s)~\cite{gu2017infiniswap} sit \emph{below} the crossover, however, so the adaptive controller and the rest
+and same-rack paths (single-digit to tens of $\mu$s)~\cite{gao2016network}
+and RDMA fabrics (a few $\mu$s)~\cite{gu2017infiniswap} sit \emph{below} the
+crossover, however, so the adaptive controller and the rest
 of this guidance target that sub-crossover (loopback / same-host /
 RDMA-class) regime where prefetch can congest. Second, in that regime estimate the
 working-set ratio (touched pages before TTFR over total mapped pages); if it
@@ -1340,9 +1352,23 @@ latency but not cross-host transport effects (NIC, interrupts, buffering); the
 real two-machine run does exercise those, but on a different kernel
 ($7.0.x$ vs.\ $6.18.7$) and at a single RTT operating point, so it confirms the
 \emph{direction} of the crossover rather than supplying a like-for-like
-magnitude. A full physical RTT sweep on a fixed kernel remains future work, as
-does RDMA, whose $\approx\!1$--$2\,\mu$s RTT sits deep in the congestion-bound
-regime where the controller applies.
+magnitude. The crossover \emph{location} ($100$--$150\,\mu$s) was measured
+only on $6.18.7$; the $7.0.x$ data are loopback plus the single two-machine
+RTT, so whether the crossover point itself (not just absolute TTFR) shifts
+across kernels is unmeasured and is future work. A full physical RTT sweep on
+a fixed kernel remains future work, as does RDMA, whose
+$\approx\!1$--$2\,\mu$s RTT sits deep in the congestion-bound regime where the
+controller applies.
+
+\textbf{Causal attribution.}\, We attribute the loopback regression to
+contention at the shared page-server transport, but we did not directly
+instrument that transport: socket-buffer occupancy, TCP retransmission
+counters, and NIC/CPU utilization at the page server were not recorded. The
+account is therefore \emph{inferential}, supported by the observed queue-depth
+growth ($q$) and by the RTT crossover (\S\ref{sec:crosshost}) --- both of
+which behave as transport contention predicts --- but not by direct
+resource-level measurement. Confirming the mechanism with server-side socket
+and NIC instrumentation is future work.
 
 \textbf{Controller is not RTT-aware.}\, The controller disables prefetch on
 congestion signals alone, which is correct below the crossover but ill-suited
