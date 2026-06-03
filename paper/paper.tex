@@ -1233,9 +1233,7 @@ adaptive controller's benefit in our pilot runs.
 checkpoint/restore predates CRIU~\cite{litzkow1997checkpoint,
 sapuntzakis2002optimizing}. VM-level live
 migration~\cite{clark2005live} popularized the pre-copy and post-copy
-techniques~\cite{hines2009postcopy} that CRIU~\cite{criu} now inherits;
-adjacent memory-management work in this lineage includes ballooning and
-share-based reclamation in commodity hypervisors~\cite{waldspurger2002memory}.
+techniques~\cite{hines2009postcopy} that CRIU~\cite{criu} now inherits.
 Lazy restore via \uffd~\cite{criu-lazy} is structurally a post-copy technique
 specialized for processes. Fast in-memory CRIU for containers has been
 explored~\cite{venkatesh2019fast}, but without an adaptive prefetch policy;
@@ -1262,16 +1260,12 @@ prefetch patterns at swap-path granularity, which is structurally similar
 to the signal-driven policy we adopt at the \uffd boundary.
 Google's software-defined far memory at warehouse
 scale~\cite{lagar2019software} pioneered tiered remote-memory deployment
-in production. AIFM~\cite{ruan2020aifm}, Carbink~\cite{zhou2022carbink},
-and Hydra~\cite{lee2022hydra} extend RDMA-backed remote memory with
-runtime APIs and fault tolerance. Semeru~\cite{wang2020semeru} and
-Clio~\cite{calciu2021clio} co-design managed runtimes and hardware for
-disaggregated memory. LegoOS~\cite{shan2018legoos} disaggregates CPU,
+in production, and AIFM~\cite{ruan2020aifm} adds a high-level runtime API
+over RDMA-backed far memory. LegoOS~\cite{shan2018legoos} disaggregates CPU,
 memory, and storage across separate components, and CXL-based memory
 pooling~\cite{cxl} is an emerging hardware approach; the network
 requirements of resource disaggregation are characterized
-in~\cite{gao2016network}, and earlier blade-server proposals
-include~\cite{lim2009disaggregated}. These systems operate at the swap or
+in~\cite{gao2016network}. These systems operate at the swap or
 application level; \distriproc targets the transient remote-memory state
 that exists between restore and working-set convergence, and is
 complementary: its userspace policy layer could sit above a CXL-backed
@@ -1279,10 +1273,9 @@ or RDMA-backed far-memory transport.
 
 \textbf{Prefetch policies.}\, Sequential and stride prefetching in virtual
 memory systems are well-studied~\cite{chen1995effective}. Adaptive
-prefetch has been explored in hardware
-prefetchers~\cite{srinath2007feedback, joseph1997prediction} and database
-buffer management~\cite{cao1996integrated}, and machine-learning models
-can in principle predict access patterns directly~\cite{hashemi2018learning}.
+prefetch has been explored in hardware prefetchers~\cite{srinath2007feedback},
+and machine-learning models can in principle predict access patterns
+directly~\cite{hashemi2018learning}.
 To our knowledge, adaptive prefetch policy for the \uffd post-restore
 phase has not been previously studied.
 
