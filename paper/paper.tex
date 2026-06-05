@@ -949,10 +949,10 @@ realized on workloads where prefetch was cheap to begin with.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{fig3_prefetch_volume.pdf}
-  \caption{Prefetch volume per restore session. Adaptive cuts volume on
-    test\_loop ($-55\,\%$) and Redis ($-52\,\%$); on PyTorch it issues
-    more speculative fetches after the cooldown expires, once the
-    latency-critical phase is over.}
+  \caption{Prefetch volume per restore session. Adaptive reduces speculative
+    traffic on test\_loop ($-55\,\%$) and Redis ($-52\,\%$), but \emph{increases}
+    total prefetch volume on PyTorch ($+86\,\%$) because prefetch re-enables
+    after the cooldown, once the latency-critical phase is over.}
   \label{fig:prefetch_vol}
 \end{figure}
 
@@ -1076,7 +1076,7 @@ hosts run Linux~$7.0.x$, not the $6.18.7$ of the single-host sweep, so this is
 a clean same-kernel comparison across restore modes on real hardware rather
 than a like-for-like overlay on the \texttt{netem} curves. The round trip,
 measured with \texttt{ping} (mean of $20$ probes), is $311\,\mu$s, above the
-crossover, so the model predicts prefetch should win.
+crossover, so the crossover model suggests prefetch should be beneficial.
 
 It does, decisively (Table~\ref{tab:twomachine}, $n\!=\!50$): demand-only lazy
 averages $7{,}073\!\pm\!124$\,ms while fixed prefetch averages
@@ -1084,9 +1084,10 @@ $1{,}985\!\pm\!28$\,ms, a $71.9\,\%$ reduction with non-overlapping $95\,\%$
 CIs. The adaptive controller tracks the winning prefetch side here
 ($2{,}133\!\pm\!30$\,ms, $-69.8\,\%$ vs.\ lazy, within $7.5\,\%$ of fixed),
 rather than flapping as it did near the emulated crossover
-(\S\ref{sec:crosshost}). This is the central prediction of the crossover,
-confirmed on genuine cross-host hardware: above the crossover the sign of the
-prefetch effect is positive, not an artifact of \texttt{netem}.
+(\S\ref{sec:crosshost}). This is consistent with the crossover hypothesis and
+demonstrates that the above-crossover regime exists on genuine cross-host
+hardware: the sign of the prefetch effect is positive, not an artifact of
+\texttt{netem}.
 
 We deliberately do not read this magnitude against the $6.18.7$ \texttt{netem}
 sweep. The two-machine hosts run a different kernel, and
@@ -1137,7 +1138,9 @@ recovers TTFR to statistical parity with demand-only lazy (within
 $37$\,ms, $p\!=\!0.37$ on $7.0.9$) while significantly beating fixed
 prefetch ($t\!=\!15.0$). The paradox and its mitigation are therefore not
 artifacts of a single kernel; their magnitude is, which is itself a useful
-caution for anyone benchmarking lazy restore.
+caution for anyone benchmarking lazy restore. Determining which $7.0$-series
+kernel subsystems drive the several-fold baseline shift is beyond our scope and
+is future work.
 
 \begin{table}[t]
 \centering
@@ -1205,8 +1208,8 @@ its own crossover and throughput before adopting the specific thresholds.
 First,
 check the transport RTT against the crossover (\S\ref{sec:crosshost}): above
 it (between $100$ and $150\,\mu$s) prefetch hides latency and should stay
-\emph{enabled}. This covers most cross-host LAN paths (typically
-$\gtrsim\!150\,\mu$s) and all WAN paths (milliseconds). Tight intra-datacenter
+\emph{enabled}. This covers many cross-host LAN paths (those outside
+tightly-coupled datacenter fabrics) and all WAN paths (milliseconds). Tight intra-datacenter
 and same-rack paths (single-digit to tens of $\mu$s)~\cite{gao2016network}
 and RDMA fabrics (a few $\mu$s)~\cite{gu2017infiniswap} sit \emph{below} the
 crossover, however, so the adaptive controller and the rest
