@@ -32,6 +32,8 @@
 #   PORT              page-server TCP port        (default: 9999)
 #   ITERS             iterations per mode         (default: 10)
 #   MODES             space-separated             (default: "lazy lazy-prefetch lazy-adaptive")
+#   NODELAY_ARMS      TCP_NODELAY arms, interleaved per iteration (default: "0 1";
+#                     0 = original Nagle-on transport, 1 = fixed)
 #   OUT_DIR           results dir                 (default: eval/results/crosshost-2machine)
 
 set -euo pipefail
@@ -70,10 +72,11 @@ B_PYTHONPATH="${B_PYTHONPATH:-}"
 PORT="${PORT:-9999}"
 ITERS="${ITERS:-10}"
 MODES="${MODES:-lazy lazy-prefetch lazy-adaptive}"
+NODELAY_ARMS="${NODELAY_ARMS:-0 1}"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/eval/results/crosshost-2machine}"
 mkdir -p "$OUT_DIR"
 CSV="$OUT_DIR/results.csv"
-echo "workload,mode,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms,rtt_us" > "$CSV"
+echo "workload,mode,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms,rtt_us,tcp_nodelay" > "$CSV"
 
 REMOTE_PS="$REMOTE_ROOT/src/criu_page_server.py"
 REMOTE_PID_FILE="$REMOTE_WORK/page_server.pid"
@@ -127,7 +130,7 @@ start_remote_server() {  # $1=local image dir
         log_error "image-file count mismatch A=$na B=$nb after rsync"; return 1
     fi
     # -u = unbuffered, so the startup banner + any traceback survive in the log.
-    ssh "$PAGE_SERVER_SSH" "cd '$REMOTE_ROOT' && ${B_PYTHONPATH:+PYTHONPATH=$B_PYTHONPATH }PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python nohup python3 -u '$REMOTE_PS' --host 0.0.0.0 --images-dir '$REMOTE_WORK' --port '$PORT' > '$REMOTE_WORK/page_server.log' 2>&1 & echo \$! > '$REMOTE_PID_FILE'" >/dev/null 2>&1 &
+    ssh "$PAGE_SERVER_SSH" "cd '$REMOTE_ROOT' && ${B_PYTHONPATH:+PYTHONPATH=$B_PYTHONPATH }PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python DISTRIPROC_TCP_NODELAY=$DISTRIPROC_TCP_NODELAY nohup python3 -u '$REMOTE_PS' --host 0.0.0.0 --images-dir '$REMOTE_WORK' --port '$PORT' > '$REMOTE_WORK/page_server.log' 2>&1 & echo \$! > '$REMOTE_PID_FILE'" >/dev/null 2>&1 &
     # Wait until A can connect to B:PORT.
     local deadline=$(( $(date +%s) + 10 ))
     while [ "$(date +%s)" -lt "$deadline" ]; do
@@ -143,10 +146,12 @@ start_remote_server() {  # $1=local image dir
 }
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
-for mode in $MODES; do
-  for iter in $(seq 1 "$ITERS"); do
+for iter in $(seq 1 "$ITERS"); do
+  for mode in $MODES; do
+   for nd in $NODELAY_ARMS; do
+    export DISTRIPROC_TCP_NODELAY="$nd"   # handler inherits; ssh passes it to B
     work_dir=$(mktemp -d "/tmp/distriproc-2m-${mode}-XXXXXX")
-    log_info "[pytorch/$mode] iter $iter"
+    log_info "[pytorch/$mode/nd$nd] iter $iter"
 
     workload_start "$work_dir"
     workload_warmup
@@ -156,7 +161,7 @@ for mode in $MODES; do
     WORKLOAD_PID=""
 
     if ! start_remote_server "$work_dir"; then
-        log_error "[pytorch/$mode] iter $iter: skipping (server failed)"
+        log_error "[pytorch/$mode/nd$nd] iter $iter: skipping (server failed)"
         rm -rf "$work_dir"; stop_remote_server; continue
     fi
 
@@ -170,18 +175,18 @@ for mode in $MODES; do
     TTFR_MS=0; workload_ttfr_probe "$work_dir" || true; ttfr_ms="$TTFR_MS"
     if [ "$ttfr_ms" = "-1" ]; then
         alive=$(kill -0 "$restored_pid" 2>/dev/null && echo yes || echo no)
-        log_warn "[pytorch/$mode] iter $iter probe FAILED: restored pid=$restored_pid alive=$alive"
+        log_warn "[pytorch/$mode/nd$nd] iter $iter probe FAILED: restored pid=$restored_pid alive=$alive"
         log_warn "--- workload.log tail ---"; tail -20 "$work_dir/workload.log" >&2 2>/dev/null || true
         log_warn "--- restore.log tail ---"; tail -15 "$work_dir/restore.log" >&2 2>/dev/null || true
         log_warn "--- remote page_server.log tail ---"
         ssh "$PAGE_SERVER_SSH" "tail -15 '$REMOTE_WORK/page_server.log'" 2>/dev/null >&2 || true
     fi
     THROUGHPUT=0; workload_throughput || true; throughput="$THROUGHPUT"
-    log_info "[pytorch/$mode] iter $iter TTFR=${ttfr_ms}ms"
+    log_info "[pytorch/$mode/nd$nd] iter $iter TTFR=${ttfr_ms}ms"
 
     # Preserve all logs for diagnosis (not just handler.log).
     for lg in workload restore handler page_server; do
-        cp "$work_dir/$lg.log" "$OUT_DIR/pytorch_${mode}_iter${iter}_${lg}.log" 2>/dev/null || true
+        cp "$work_dir/$lg.log" "$OUT_DIR/pytorch_${mode}_nd${nd}_iter${iter}_${lg}.log" 2>/dev/null || true
     done
 
     [ -n "$restored_pid" ] && kill -9 "$restored_pid" 2>/dev/null || true
@@ -192,9 +197,10 @@ for mode in $MODES; do
     stats=$(parse_handler_stats "$work_dir/handler.log")
     stop_remote_server
 
-    csv_append "$CSV" "pytorch,${mode},${iter},${ttfr_ms},${throughput},${stats},${checkpoint_ms},${RTT_US}"
+    csv_append "$CSV" "pytorch,${mode},${iter},${ttfr_ms},${throughput},${stats},${checkpoint_ms},${RTT_US},${nd}"
     workload_cleanup
     rm -rf "$work_dir"
+   done
   done
 done
 
