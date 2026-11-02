@@ -1,0 +1,535 @@
+%% ============================================================================
+%%  The Prefetch Paradox That Wasn't: Four Measurement Artifacts in a
+%%  CRIU Lazy-Restore Study.  IEEEtran conference format (venue TBD).
+%%  Build: pdflatex pitfall && bibtex pitfall && pdflatex pitfall && pdflatex pitfall
+%% ============================================================================
+\documentclass[conference]{IEEEtran}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{cite}
+\usepackage[colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue!60!black]{hyperref}
+\usepackage{url}
+\usepackage{xspace}
+
+% Categorical slots 1-4 (validated: CVD-safe adjacent pairs; markers + table
+% carry identity for the two sub-3:1 hues).
+\definecolor{cA}{HTML}{2A78D6}
+\definecolor{cB}{HTML}{EB6834}
+\definecolor{cC}{HTML}{1BAF7A}
+\definecolor{cD}{HTML}{EDA100}
+
+\newcommand{\uffd}{\texttt{userfaultfd}\xspace}
+\newcommand{\nd}{\texttt{TCP\_NODELAY}\xspace}
+\newcommand{\us}{\,$\mu$s\xspace}
+
+\title{The Prefetch Paradox That Wasn't:\\
+Four Measurement Artifacts in a CRIU Lazy-Restore Study}
+
+\author{\IEEEauthorblockN{Utkarsh Maurya}
+\IEEEauthorblockA{Independent Researcher\\
+\href{mailto:utkarsh@kernex.sbs}{utkarsh@kernex.sbs}}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We had a near-submission paper reporting that fixed sequential prefetch
+\emph{slows} post-restore time-to-first-request (TTFR) under CRIU lazy restore
+by 88\,\% at loopback, that an RTT crossover near 100--150\us separates a
+harmful regime from a helpful one, and that an adaptive controller recovers the
+loss. Every one of these findings is an artifact. Nagle's algorithm on the page
+server, interacting with delayed ACKs, stalls each pipelined prefetch batch by
+${\approx}41$\,ms. The stall backs up the prefetch queue, and a linear
+duplicate scan on the fault path turns that backlog into CPU time charged to
+every fault. A teardown race silently recorded lost statistics as zeros,
+fabricating an 85\,\% fault reduction. A probe race inflated full-restore TTFR
+of a small workload 60$\times$, inventing a 24$\times$ lazy-restore win that is
+in fact a 2.4$\times$ loss. In a single session we reproduce the original
+numbers within 10\,\% with Nagle on and invert them with Nagle off: prefetch
+cuts TTFR by 48\,\% at loopback and 87\,\% at 1\,ms RTT, with no crossover
+anywhere from 0 to 2\,ms. We describe how each artifact hid, the signature
+that would have exposed it, and a short checklist for remote-paging
+measurements.
+\end{abstract}
+
+\begin{IEEEkeywords}
+measurement pitfalls, TCP Nagle algorithm, delayed ACK, lazy restore, CRIU,
+userfaultfd, prefetching, reproducibility
+\end{IEEEkeywords}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Introduction}
+
+A counter-intuitive result is the best kind to publish and the worst kind to
+trust. Our earlier study of CRIU lazy restore~\cite{criu,criu-lazy} found
+one: speculative prefetch of neighboring pages, which cut fault counts by
+85\,\%, nonetheless made a PyTorch process 88\,\% slower to answer its first
+request. We explained it as contention between prefetch traffic and fault
+resolution, swept emulated RTT to locate a crossover where prefetch turns
+helpful, confirmed the helpful side on a two-machine LAN, and designed an
+adaptive controller that detects the ``congested'' regime and backs off. The
+results were statistically sharp ($n\!=\!20$, Welch $|t|>45$) and internally
+consistent.
+
+They were also wrong. While building a successor system we found its bandwidth
+estimator reporting ${\sim}700$ pages/s on loopback, two orders of magnitude
+below what the channel should carry. That number led to Nagle's
+algorithm~\cite{rfc896}; pulling that thread unraveled the paper. This paper
+documents what we found, because each artifact is generic to remote-paging
+prototypes and none announced itself:
+
+\begin{enumerate}
+\item \textbf{Nagle $\times$ delayed ACK} on a request/response protocol with
+pipelined sub-MSS responses stalls every prefetch batch by one delayed-ACK
+timeout (\S\ref{sec:nagle}).
+\item \textbf{A fault-path coupling}: the stalled queue grows, and an
+$O(\text{depth})$ duplicate scan executed per fault converts it into a fixed
+CPU tax, the ``contention'' we had attributed to the network
+(\S\ref{sec:coupling}).
+\item \textbf{Silent zeros}: when the stalled worker outlived the harness's
+kill deadline, its statistics were lost and parsed as zero, fabricating the
+85\,\% fault reduction that made the result paradoxical (\S\ref{sec:zeros}).
+\item \textbf{A probe race}: a passive TTFR probe deleted its signal file after
+restore began, so a fast restore was charged a full one-second sleep tick
+(\S\ref{sec:probe}).
+\end{enumerate}
+
+\noindent We confirm each with a targeted A/B on the same machine, kernel and
+build in one session (\S\ref{sec:corrected}). With all four fixed, prefetch
+helps at every RTT we measured, and the controller's ``recovery'' turns out to
+have been a response to symptoms of the transport bug (\S\ref{sec:controller}).
+\S\ref{sec:lessons} distills a checklist.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{System and Original Claims}
+\label{sec:system}
+
+\textbf{Lazy restore.}\, CRIU's lazy restore resumes a checkpointed process
+with its memory unpopulated; a handler registered on \uffd~\cite{userfaultfd}
+receives each page fault, fetches the page from a page server and installs it
+with \texttt{UFFDIO\_COPY}. This is post-copy migration~\cite{hines2009postcopy}
+at process granularity, and the same TTFR concern drives snapshot work such as
+REAP~\cite{ustiugov2021reap}.
+
+\textbf{Our prototype.}\, A C handler resolves faults \emph{serially} on one
+TCP connection: an 8-byte address request, a 4096-byte page response. On
+each fault it also enqueues up to 16 sequential (or 8 strided) neighbors for a
+background worker, which pulls batches of up to 32 addresses from the queue,
+sends all 32 requests back-to-back on a second connection, then reads the 32
+responses. Before enqueuing, the fault path scans the queue for duplicates. A
+Python page server serves each connection on its own thread.
+
+\textbf{Measurement.}\, TTFR is the time from invoking \texttt{criu restore} to
+the workload's first observable response. Workloads: \emph{test\_loop}, a C
+loop that rewrites a counter file once per \texttt{sleep(1)}; Valkey (Redis)
+with 10k keys; and a ResNet-18 PyTorch process (${\approx}15.5$k pages touched
+before first inference). Modes: \texttt{full} restore, demand-only
+\texttt{lazy}, fixed \texttt{prefetch}, and \texttt{adaptive} (prefetch with a
+controller that halves or disables prefetch on high duplicate rate or queue
+depth). RTT is injected with \texttt{netem}~\cite{hemminger2005netem} on
+loopback.
+
+\textbf{Original claims} (all PyTorch unless noted, $n\!=\!20$):
+\begin{itemize}
+\item[C0] Prefetch \emph{hurts} below an RTT crossover of 100--150\us and helps
+above it: $+88\,\%$ at loopback ($650\to1227$\,ms), $-37\,\%$ at 1\,ms.
+\item[C1] Lazy restore cuts test\_loop TTFR $24\times$ (full $1019$\,ms vs
+lazy $42$\,ms).
+\item[C2] Prefetch hurts because prefetch traffic contends with fault
+resolution, even while reducing faults by 85\,\% ($15{,}515\to2{,}322$).
+\item[C3] The adaptive controller recovers the regression ($655$\,ms, within
+noise of lazy).
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Artifact 1: Nagle Meets Delayed ACK}
+\label{sec:nagle}
+
+\textbf{Mechanism.}\, Nagle's algorithm~\cite{rfc896} holds a sub-MSS segment
+while earlier data on the connection is unacknowledged. Delayed
+ACK~\cite{rfc1122} lets a receiver with nothing to send wait before
+acknowledging; Linux waits at least 40\,ms. Their interaction is a known
+hazard for request/response traffic~\cite{minshall2000pitfalls,
+mogul2001rethinking}, and our prefetch protocol walks straight into it. The
+worker sends 32 requests; the server answers the first with a 4096-byte
+segment, which is below the loopback MSS (${\approx}64$\,KB) and also leaves a
+sub-MSS tail on an Ethernet MSS. The second response is held by Nagle until
+that segment is acknowledged. The client has already sent every request and
+has nothing to piggyback an ACK on, so it delays: ${\approx}41$\,ms per batch.
+The \emph{fault} connection is immune, because a serial exchange never has
+unacknowledged data when the next response is written. Prefetch was the only
+path that pipelined, so it was the only path that stalled.
+
+\begin{table}[t]
+\centering
+\caption{Standalone repro of the page-server protocol on loopback (no netem):
+median batch time and throughput, 200 batches. Only the \emph{server}'s
+\nd matters.}
+\label{tab:repro}
+\small
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+& \multicolumn{4}{c}{\nd (server, client)} \\
+\cmidrule(l){2-5}
+batch & off, off & on, off & off, on & on, on \\
+\midrule
+1  & 18\us      & 15\us     & 17\us      & 16\us \\
+8  & 41{,}009\us & 77\us    & 41{,}009\us & 62\us \\
+32 & 40{,}893\us & 415\us   & 41{,}096\us & 288\us \\
+\midrule
+32 (pages/s) & 1{,}092 & 71{,}849 & 850 & 105{,}267 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Evidence.}\, Table~\ref{tab:repro} reproduces the stall outside the
+system with a short script mimicking the page server and the worker
+(\texttt{eval/nagle\_repro.py}, no root). A single-page exchange is
+unaffected. Any batch of $\ge2$ costs one delayed-ACK timeout, and setting
+\nd on the server alone removes it. The worker therefore moved roughly
+$32/41\,\text{ms}\approx780$ pages/s, which is the figure our successor's
+estimator had reported.
+
+\textbf{Signature.}\, A latency quantum near 40\,ms, independent of
+payload size, that appears only with pipelining. We never looked, because
+the paper's metric was end-to-end TTFR, in which the quantum was smeared
+across thousands of batches.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Artifact 2: How a Stalled Side Channel Slows the Main Path}
+\label{sec:coupling}
+
+Nagle explains why prefetch was useless at loopback. It does not explain
+why prefetch was \emph{harmful}, since the serial fault path never stalls.
+Yet TTFR rose by ${\approx}600$\,ms. The coupling is in the handler, not the
+network. On every fault, \texttt{async\_prefetch\_enqueue} takes the queue
+lock and, for each candidate, scans the whole queue to drop duplicates. The
+worker drains ${\approx}780$ pages/s while each fault offers up to 16
+candidates, so the queue fills to its 8{,}192-entry cap within the first
+second and stays there, dropping ${\approx}124$k requests per run. The build
+used \texttt{-O0}.
+
+\textbf{Causal test.}\, We instrumented the handler to time enqueue on the
+fault path and record queue depth at each enqueue, and added a switch that
+skips the scan. Table~\ref{tab:ablate} is a 2$\times$2 of \nd $\times$ scan
+at loopback. With Nagle on, removing the scan alone takes prefetch from
+$1207$ to $608$\,ms, indistinguishable from lazy ($601$\,ms). The enqueue time
+it removes, 577\,ms or 37\us per fault, accounts for the whole regression.
+Fault counts do not move (15.5k in every Nagle-on cell), so prefetch was
+neither helping nor competing for the wire; it was burning the fault path's
+CPU. With \nd the queue averages 235 entries, the scan costs 24\,ms in total,
+and keeping it is slightly \emph{better} ($299$ vs $323$\,ms): without
+deduplication the worker wastes bandwidth on repeated pages and faults rise
+from 5.0k to 6.1k.
+
+\begin{table}[t]
+\centering
+\caption{Causal test, PyTorch fixed prefetch at loopback, $n\!=\!10$:
+TTFR (mean $\pm$ 95\,\% CI), page faults, total enqueue time on the fault
+path, and mean queue depth at enqueue (cap 8{,}192).}
+\label{tab:ablate}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llrrrr@{}}
+\toprule
+\nd & dup.\ scan & TTFR (ms) & faults & enq.\ (ms) & depth \\
+\midrule
+off & linear  & $1207\pm33$ & 15.5k & 577 & 7{,}657 \\
+off & skipped & $608\pm15$  & 15.5k & 1   & 8{,}048 \\
+on  & linear  & $299\pm7$   & 5.0k  & 24  & 235 \\
+on  & skipped & $323\pm10$  & 6.1k  & 1   & 1{,}203 \\
+\midrule
+off & lazy    & $601\pm9$   & 15.5k & --  & -- \\
+on  & lazy    & $584\pm7$   & 15.5k & --  & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Microbenchmark of the duplicate scan (16 candidates, all misses)
+against queue depth, scaled by 15.5k faults: the debug build costs
+${\approx}4\times$.}
+\label{tab:scan}
+\small
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+& \multicolumn{2}{c}{\texttt{-O0} (as built)} & \multicolumn{2}{c}{\texttt{-O2}} \\
+\cmidrule(lr){2-3}\cmidrule(l){4-5}
+depth & \us/fault & ms total & \us/fault & ms total \\
+\midrule
+512   & 7.7   & 119   & 1.9  & 30  \\
+1{,}500 & 22.2 & 344  & 5.5  & 85  \\
+3{,}000 & 44.9 & 696  & 11.2 & 173 \\
+6{,}000 & 90.6 & 1{,}404 & 22.2 & 343 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:scan} isolates the scan in a microbenchmark. Its worst case
+over-predicts the measured cost, because at a full queue each enqueue scans
+for the first candidate and then drops the rest, but it shows the build flag
+multiplying the tax by about four. Nagle supplied the backlog, the scan turned
+the backlog into fault-path latency, and the debug build amplified it.
+
+\textbf{The crossover, explained.}\, With Nagle on, the stalled worker still
+lands pages ahead of demand once each fault is slow enough. Its fault savings
+grow with RTT: PyTorch faults under prefetch fall from 15.4k at loopback to
+14.4k at 150\us, 13.1k at 200\us and 9.6k at 1\,ms. Each saved fault is worth
+one lazy per-fault cost (lazy TTFR$/15.5$k: 205\us at 150\us RTT, 253\us at
+200\us). Savings therefore reach the ${\approx}550$\,ms scan tax between 150
+and 200\us. Measured Nagle-on prefetch breaks even at 150\us (ratio 1.00) and
+wins by 12\,\% at 200\us. The ``crossover'' we reported as a property of the
+network was the point where a fixed self-inflicted tax met RTT-proportional
+savings.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Artifact 3: Silent Zeros}
+\label{sec:zeros}
+
+The 85\,\% fault reduction made C2 paradoxical, and the paradox made it
+interesting. It was never real. The harness sends \texttt{SIGTERM} to the
+handler after measuring, waits 3\,s, then \texttt{SIGKILL}s it and parses its
+log for a statistics line. On stop, the worker drained its queue first. With
+Nagle on, a full 8{,}192-entry queue at ${\approx}780$ pages/s needs about
+10\,s,
+the handler died before printing, and the parser's defaults (all zero) went
+into the CSV. In the original data, 17 of 20 prefetch rows read zero faults;
+the other three read 15{,}440--15{,}498, the same as lazy. Our rerun
+reproduces the pattern: 16 of 20 zeros, and 15{,}452--15{,}650 in the four
+complete rows. The mean of a mixture of zeros and real values produced
+``$2{,}322$''.
+
+Prefetch with Nagle on reduced faults by essentially \emph{nothing}. The
+tell was in plain sight: a per-mode mean whose rows were bimodal between 0 and
+the lazy value. We fixed the worker to exit on stop without draining, and the
+parser now writes $-1$ (missing) rather than 0. With the fix, every
+Nagle-on prefetch row in Table~\ref{tab:ablate} reports its faults:
+15.4--16.0k.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Artifact 4: A Probe Race}
+\label{sec:probe}
+
+test\_loop's TTFR probe is passive: it deletes the counter file and waits for
+the restored process to rewrite it. The deletion happened \emph{after} restore
+began. A fast restore (full restore of a 1\,MB process) often rewrote the file
+before the probe deleted it, so the probe waited for the next write, one
+\texttt{sleep(1)} later. Full restore was charged $1019\pm1$\,ms. Lazy restore
+was slow enough to lose the race and was charged its true ${\approx}42$\,ms.
+Moving the deletion to the window between checkpoint and restore gives full
+$17$\,ms and lazy $41$--$42$\,ms. Lazy restore is $2.4\times$ \emph{slower},
+not $24\times$ faster.
+
+\textbf{Signature.}\, A result that equals a known period (1000\,ms here,
+${\approx}$ one tick of \texttt{sleep(1)}) plus a small constant, with a
+suspiciously tight CI ($\pm1$\,ms over 20 runs). Full restore of 266 pages at
+1\,s also implies 1\,MB/s, three orders of magnitude below a memory copy.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Corrected Results}
+\label{sec:corrected}
+
+\textbf{Setup.}\, AMD Ryzen 7 7735HS (8 cores, 16 threads), 14\,GB RAM, Linux
+7.2.8, CRIU 4.2.1, Python 3.14, PyTorch 2.15 (CPU). The original paper used
+the same hardware on Linux 6.18.7 with PyTorch 2.12. Each configuration runs
+with \nd off (the original transport) and on, arms interleaved per workload
+and per RTT point, in one session, with the probe race fixed in both arms.
+Matrix: $n\!=\!20$ at loopback. Sweep: PyTorch, $n\!=\!10$, RTT 0--2000\us.
+Values are mean $\pm$ 95\,\% CI.
+
+\begin{table}[t]
+\centering
+\caption{Loopback TTFR (ms), $n\!=\!20$. ``Paper'' is the original dataset
+(Nagle on, probe race present); the Nagle-on rerun reproduces it.}
+\label{tab:matrix}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+workload & mode & paper & Nagle on & \nd \\
+\midrule
+\multirow{4}{*}{PyTorch}
+ & full     & $191\pm7$  & $202\pm5$  & $208\pm2$ \\
+ & lazy     & $650\pm10$ & $618\pm8$  & $618\pm16$ \\
+ & prefetch & $1227\pm23$ & $1146\pm15$ & $\mathbf{311\pm11}$ \\
+ & adaptive & $655\pm9$  & $594\pm7$  & $352\pm55^{*}$ \\
+\midrule
+\multirow{4}{*}{test\_loop}
+ & full     & $1019\pm1^{\dagger}$ & $17\pm0$ & $18\pm0$ \\
+ & lazy     & $42\pm1$   & $41\pm1$ & $42\pm2$ \\
+ & prefetch & $43\pm3$   & $41\pm1$ & $27\pm1$ \\
+ & adaptive & $41\pm1$   & $40\pm2$ & $29\pm1$ \\
+\midrule
+\multirow{4}{*}{Redis}
+ & full     & $32\pm2$ & $31\pm1$ & $31\pm0$ \\
+ & lazy     & $37\pm2$ & $35\pm1$ & $35\pm2$ \\
+ & prefetch & $39\pm2$ & $37\pm2$ & $37\pm1$ \\
+ & adaptive & $38\pm2$ & $34\pm1$ & $34\pm1$ \\
+\bottomrule
+\multicolumn{5}{@{}p{0.95\columnwidth}@{}}{\footnotesize $^{*}$One
+iteration at 878\,ms; median 325\,ms. $^{\dagger}$Probe race
+(\S\ref{sec:probe}).}
+\end{tabular}
+\end{table}
+
+\textbf{Attribution.}\, With Nagle on, the rerun reproduces the paper on a
+different kernel and PyTorch version: prefetch $+85\,\%$ vs lazy (paper:
+$+89\,\%$), adaptive within 4\,\% of lazy. The only remaining
+difference between the Nagle-on and \nd columns is one socket option, and
+it flips PyTorch prefetch from $+85\,\%$ to $-50\,\%$ ($p\ll10^{-6}$). Redis
+is unaffected either way, since its first request touches few pages.
+test\_loop's prefetch gain ($-35\,\%$) appears only with \nd.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\columnwidth, height=5.6cm,
+  symbolic x coords={0,30,60,100,150,200,300,500,1000,2000},
+  xtick={0,30,60,100,150,200,300,500,1000,2000}, xticklabel style={font=\scriptsize},
+  xlabel={injected RTT (\textmu s, non-uniform spacing)},
+  ymode=log, ylabel={TTFR (ms)}, ymin=200, ymax=30000,
+  yticklabel style={font=\scriptsize}, label style={font=\small},
+  ymajorgrids, major grid style={black!12},
+  legend style={font=\scriptsize, at={(0.02,0.98)}, anchor=north west,
+                draw=none, fill=white, fill opacity=0.85, text opacity=1},
+  legend cell align=left,
+  every axis plot/.append style={line width=1pt, mark size=2pt},
+  unbounded coords=jump,
+]
+\addplot[color=cD, mark=square*] table[x=rtt, y=lazy]{sweep.dat};
+\addlegendentry{lazy (demand only)}
+\addplot[color=cB, mark=triangle*] table[x=rtt, y=pf0]{sweep.dat};
+\addlegendentry{prefetch, Nagle on}
+\addplot[color=cA, mark=*] table[x=rtt, y=pf1]{sweep.dat};
+\addlegendentry{prefetch, \nd}
+\addplot[color=cC, mark=diamond*] table[x=rtt, y=ad1]{sweep.dat};
+\addlegendentry{adaptive, \nd}
+\end{axis}
+\end{tikzpicture}
+\caption{PyTorch TTFR vs injected RTT ($n\!=\!10$ per point). With Nagle on,
+prefetch is slower than lazy up to 150\us; with \nd it is 2--8$\times$
+faster at every RTT. Lazy exceeds the 30\,s probe timeout at 2\,ms.}
+\label{fig:sweep}
+\end{figure}
+
+\textbf{No crossover.}\, Figure~\ref{fig:sweep} and Table~\ref{tab:sweep}
+show the sweep. The Nagle-on arm reproduces the original curve, breaking even
+at 150\us. With \nd, prefetch beats lazy at every RTT, and the margin widens
+with RTT, from $0.52\times$ lazy's TTFR at loopback to $0.13\times$ at 1\,ms.
+Faults under prefetch fall from 5.0k at loopback to a floor of 2.0k from
+200\us on, against 15.5k for lazy. The original paper's one surviving claim,
+that prefetch helps at high RTT, holds and is several times stronger
+($-87\,\%$ at 1\,ms, versus the reported $-37\,\%$).
+
+\begin{table}[t]
+\centering
+\caption{PyTorch sweep, TTFR relative to each arm's own lazy at the same RTT ($n\!=\!10$); lazy row from the \nd arm.}
+\label{tab:sweep}
+\scriptsize
+\setlength{\tabcolsep}{2.2pt}
+\begin{tabular}{@{}lrrrrrrrrr@{}}
+\toprule
+RTT\,(\textmu s) & 0 & 30 & 60 & 100 & 150 & 200 & 300 & 500 & 1000 \\
+\midrule
+lazy (ms) & 638 & 1194 & 1606 & 2270 & 3171 & 3918 & 5587 & 8788 & 16672 \\
+\midrule
+pf, Nagle on & 1.84 & 1.50 & 1.44 & 1.10 & 1.00 & 0.88 & 0.82 & 0.74 & 0.62 \\
+pf, \nd      & 0.52 & 0.34 & 0.26 & 0.20 & 0.17 & 0.15 & 0.14 & 0.14 & 0.13 \\
+ad, \nd      & 0.51 & 0.34 & 0.25 & 0.24 & 0.16 & 0.15 & 0.13 & 0.11 & 0.10 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{The Controller Learned the Bug}
+\label{sec:controller}
+
+C3's controller disables prefetch when the duplicate rate exceeds 80\,\% or
+the queue is deep. With Nagle on, its first 128-fault window saw 48 pages
+prefetched, a 92\,\% duplicate rate and a depth of 1{,}381, and it switched
+prefetch off. That is the right response to a stalled channel, and it is why
+adaptive matched lazy. But the condition it detected was the bug, not a
+property of the workload or the network. Signals tuned on an artifact can
+look validated, because the artifact is exactly what they react to.
+
+With \nd, the same controller shrinks its window instead of disabling it,
+and lands slightly \emph{ahead} of fixed prefetch at high RTT ($-22\,\%$ at
+1\,ms, $-24\,\%$ at 2\,ms). We report this without claiming a mechanism; it
+is the starting point for a corrected study, not a result of this one. Our
+successor system's ``bandwidth-aware'' regime gate had the same flaw: it was
+estimating the Nagle-limited ${\sim}700$ pages/s and switching regimes on it.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Lessons}
+\label{sec:lessons}
+
+\textbf{Treat a paradox as a bug until the mechanism is measured, not
+inferred.} We had a plausible story (contention), consistent aggregate data
+and large $t$ statistics. None of it tested the story. A per-component time
+breakdown (fault-path time per fault with and without prefetch) would have
+shown the cost sitting in the handler's CPU, not on the wire.
+
+\textbf{Set \nd on any request/response socket that pipelines, and test with
+a two-request microbenchmark.} The hazard is decades old~\cite{minshall2000pitfalls,
+mogul2001rethinking}, but it bites only when a code path pipelines, so a
+serial smoke test passes. Look for 40\,ms quanta.
+
+\textbf{Loopback is not a neutral baseline.} Loopback's ${\approx}64$\,KB MSS
+makes every page a ``small'' segment for Nagle, so it maximized the artifact
+in exactly the configuration we called best-case.
+
+\textbf{Never let missing data default to zero.} Emit a sentinel, count
+missing rows per cell, and look at per-row distributions before means. A
+bimodal cell (zeros mixed with real values) is a pipeline bug.
+
+\textbf{Distrust results that equal a constant of the setup.} 1019\,ms on a
+workload that sleeps for one second; 41\,ms batches on a kernel whose
+minimum delayed ACK is 40\,ms; ${\sim}700$ pages/s that equals $32/41$\,ms.
+Each artifact had a number that matched a constant of the setup.
+
+\textbf{Reproduce the old result before claiming the new one.} Running both
+arms interleaved in one session, and recovering the original numbers in the
+``bug on'' arm, attributes the change to the bug rather than to a new
+kernel, library version or machine state.
+
+These echo general warnings about measurement bias~\cite{mytkowicz2009wrong}
+and benchmarking practice~\cite{hoefler2015scientific,vanderkouwe2019sok};
+our contribution is a concrete, end-to-end case in remote paging where four
+artifacts compounded into a coherent, wrong story.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Limitations}
+
+All corrected measurements are single-host with netem-injected RTT. The
+original two-machine LAN result ($-72\,\%$ at 311\us) ran with Nagle on and
+has not been redone; we expect a larger gain, but have not measured it. One
+machine, one kernel and three workloads; the PyTorch adaptive cells carry
+single-iteration outliers. The duplicate-scan tax depends on queue depth and
+build flags, so its magnitude is specific to our prototype, but the pattern
+(a stalled side channel taxing the critical path through shared state) is not.
+
+\section{Artifact Availability}
+
+Code, raw CSVs and per-run handler logs:
+\url{https://github.com/kernex-sbs/DistriProc} (branch
+\texttt{nodelay-remeasure}). \texttt{eval/remeasure\_nodelay.sh} runs both
+arms; \texttt{eval/analyze\_nodelay.py} regenerates Tables~\ref{tab:matrix}
+and~\ref{tab:sweep}; \texttt{eval/nagle\_repro.py} reproduces
+Table~\ref{tab:repro} without root; \texttt{eval/ablate\_dedup.sh} runs
+Table~\ref{tab:ablate}. The handler and page server read
+\texttt{DISTRIPROC\_TCP\_NODELAY=0} to restore the original transport.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}
