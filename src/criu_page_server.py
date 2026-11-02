@@ -28,7 +28,10 @@ import threading
 try:
     from google.protobuf.descriptor import FieldDescriptor as _FD
 
-    if not hasattr(_FD, "label"):
+    # Old protobuf (e.g. Debian's 3.21) also lacks a class-level `label`: it
+    # assigns it per instance in __init__, which a read-only property breaks.
+    # Only new protobuf has is_repeated, so gate on that.
+    if not hasattr(_FD, "label") and hasattr(_FD, "is_repeated"):
         def _compat_label(self):
             if getattr(self, "is_repeated", False):
                 return _FD.LABEL_REPEATED

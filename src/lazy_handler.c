@@ -102,9 +102,16 @@ struct eager_ctx {
 	struct served_state *served;
 };
 
+#define MAX_REMOVED_RANGES 256
+
 struct served_state {
 	struct hashset set;
 	pthread_mutex_t mu;
+	/* Ranges the process discarded (MADV_DONTNEED -> UFFD_EVENT_REMOVE).
+	 * They must read as zeros, never as checkpoint content. */
+	uint64_t rm_start[MAX_REMOVED_RANGES];
+	uint64_t rm_end[MAX_REMOVED_RANGES];
+	int nrm;
 };
 
 struct async_prefetch_ctx {
@@ -286,6 +293,7 @@ static int recv_exact(int fd, void *buf, int n)
 
 static int served_state_init(struct served_state *served, size_t capacity)
 {
+	served->nrm = 0;
 	if (hashset_init(&served->set, capacity) < 0)
 		return -1;
 	if (pthread_mutex_init(&served->mu, NULL) != 0) {
@@ -308,6 +316,31 @@ static int served_contains(struct served_state *served, uint64_t addr)
 	found = hashset_contains(&served->set, addr);
 	pthread_mutex_unlock(&served->mu);
 	return found;
+}
+
+static int served_removed(struct served_state *served, uint64_t addr)
+{
+	int found = 0;
+	pthread_mutex_lock(&served->mu);
+	for (int i = 0; i < served->nrm && !found; i++)
+		found = addr >= served->rm_start[i] && addr < served->rm_end[i];
+	pthread_mutex_unlock(&served->mu);
+	return found;
+}
+
+static void served_add_removed(struct served_state *served,
+			       uint64_t start, uint64_t end)
+{
+	pthread_mutex_lock(&served->mu);
+	if (served->nrm < MAX_REMOVED_RANGES) {
+		served->rm_start[served->nrm] = start;
+		served->rm_end[served->nrm] = end;
+		served->nrm++;
+	} else {
+		fprintf(stderr, "removed-range table full; %#lx-%#lx may serve stale data\n",
+			(unsigned long)start, (unsigned long)end);
+	}
+	pthread_mutex_unlock(&served->mu);
 }
 
 static int target_list_contains(const uint64_t *targets, int ntargets, uint64_t addr)
@@ -409,6 +442,21 @@ static int install_page(int uffd, uint64_t addr, void *page_buf)
 		return -1;
 	}
 	return 0;
+}
+
+/* Resolve a fault whose page must not come from the image: install a zero
+ * page, or just wake the faulter if a racing install already mapped it. */
+static int zero_or_wake(int uffd, uint64_t addr)
+{
+	struct uffdio_zeropage zp = {
+		.range = { .start = addr, .len = PAGE_SIZE },
+	};
+	if (ioctl(uffd, UFFDIO_ZEROPAGE, &zp) == 0)
+		return 0;
+	if (errno != EEXIST)
+		return -1;
+	struct uffdio_range r = { .start = addr, .len = PAGE_SIZE };
+	return ioctl(uffd, UFFDIO_WAKE, &r);
 }
 
 /* ── Pipelined fetch + install ────────────────────────── */
@@ -664,8 +712,11 @@ static void *async_prefetch_thread(void *arg)
 
 		/* Skip pages that arrived before the worker got to them. */
 		int filtered = 0;
+		/* ponytail: a REMOVE landing between this filter and the install
+		 * can still get checkpoint data; rare, fix with a per-range epoch. */
 		for (int i = 0; i < batch_count; i++) {
-			if (!served_contains(ctx->served, batch[i]))
+			if (!served_contains(ctx->served, batch[i]) &&
+			    !served_removed(ctx->served, batch[i]))
 				batch[filtered++] = batch[i];
 		}
 		if (filtered == 0)
@@ -898,12 +949,20 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 			if (msg.event != UFFD_EVENT_PAGEFAULT) {
 				switch (msg.event) {
 				case UFFD_EVENT_UNMAP:
+					/* The process keeps running after an munmap; exiting
+					 * here left every later fault unanswered. The handler
+					 * ends on POLLHUP when the process exits. */
 					printf("userfaultfd event: %s\n",
 					       uffd_event_name(msg.event));
-					if (restore_finished)
-						goto done;
 					break;
 				case UFFD_EVENT_REMOVE:
+					served_add_removed(&served,
+							   msg.arg.remove.start,
+							   msg.arg.remove.end);
+					printf("userfaultfd event: REMOVE %#llx-%#llx\n",
+					       (unsigned long long)msg.arg.remove.start,
+					       (unsigned long long)msg.arg.remove.end);
+					break;
 				case UFFD_EVENT_REMAP:
 				case UFFD_EVENT_FORK:
 					printf("userfaultfd event: %s\n",
@@ -923,18 +982,18 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 			stats.total_faults++;
 			window.faults++;
 
-			/* Already served (by prefetch or eager fetch)? */
-			if (served_contains(&served, page_addr)) {
-				stats.prefetch_hits++;
-				window.hits++;
-				/* Still need to resolve the fault — the page is
-				 * installed but uffd may still be blocking.
-				 * Just do a zero-copy UFFDIO_COPY which will
-				 * return EEXIST and unblock the faulter... except
-				 * EEXIST means kernel already resolved it.
-				 * Actually if UFFDIO_COPY was already done, the
-				 * kernel auto-resolves subsequent faults on that
-				 * page, so we can just continue. */
+			/* A fault on a page we already installed means it was
+			 * discarded since (REMOVE) or an install raced the fault.
+			 * Either way it must not be refetched: zero it or wake. */
+			int was_served = served_contains(&served, page_addr);
+			if (was_served || served_removed(&served, page_addr)) {
+				if (was_served) {
+					stats.prefetch_hits++;
+					window.hits++;
+				}
+				if (zero_or_wake(uffd, page_addr) < 0)
+					perror("UFFDIO_ZEROPAGE/WAKE");
+				served_insert(&served, page_addr);
 				continue;
 			}
 
@@ -1025,7 +1084,6 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 		}
 	}
 
-done:
 	if (prefetch_started) {
 		/* Printed before the join: a backlogged worker can outlive
 		 * bench.sh's 3 s SIGKILL deadline, losing the stats below. */
