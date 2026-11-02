@@ -39,11 +39,17 @@ workload_profile() {
         --samples 3 --interval 1
 }
 
+workload_pre_restore() {
+    # Deleting here (not in the probe) closes a race: a fast restore wrote
+    # the first post-restore counter before the probe's rm, so the probe
+    # waited a whole sleep(1) tick (~1000 ms) instead of seeing that write.
+    rm -f "$_COUNTER_FILE"
+}
+
 workload_ttfr_probe() {
     local work_dir="$1"
     local counter_file="$_COUNTER_FILE"
     # TTFR = time from RESTORE_T_START until counter file reappears with a numeric value
-    rm -f "$counter_file"
     local deadline=$(( $(date +%s) + 30 ))
     while [ "$(date +%s)" -lt "$deadline" ]; do
         if [ -f "$counter_file" ]; then

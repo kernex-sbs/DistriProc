@@ -1,0 +1,11 @@
+workload,mode,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms
+pytorch,lazy-prefetch,1,607,85,15428,3128,0,0,17571,0,237
+pytorch,lazy-prefetch,2,645,64,15499,3403,0,0,17941,0,245
+pytorch,lazy-prefetch,3,592,81,15470,3097,0,0,17627,0,232
+pytorch,lazy-prefetch,4,645,83,15503,3164,0,0,17748,0,229
+pytorch,lazy-prefetch,5,604,80,15469,3271,0,0,17750,0,224
+pytorch,lazy-prefetch,6,607,84,15409,3024,0,0,17418,0,233
+pytorch,lazy-prefetch,7,608,83,15661,3067,0,0,17864,0,224
+pytorch,lazy-prefetch,8,601,82,15418,3193,0,0,17691,0,227
+pytorch,lazy-prefetch,9,595,83,15508,3369,0,0,17901,0,227
+pytorch,lazy-prefetch,10,581,83,15454,3140,0,0,17656,0,225

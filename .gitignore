@@ -41,3 +41,11 @@ eval/results/kernel7/logs/
 
 # two-machine per-iteration logs (bulky; results.csv is the artifact)
 eval/results/crosshost-2machine/*_iter*.log
+
+# NODELAY remeasure: track merged CSVs, ignore per-workload/per-RTT raw dirs
+eval/results/nodelay*/matrix/*/
+eval/results/nodelay*/sweep/d*/
+eval/results/tl-fix*/
+# Dedup ablation: keep handler logs (Enqueue/depth lines feed the paper)
+eval/results/ablate-dedup/*/logs/*
+!eval/results/ablate-dedup/*/logs/*_handler.log

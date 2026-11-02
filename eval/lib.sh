@@ -167,7 +167,8 @@ criu_restore_lazy() {
 
 parse_handler_stats() {
     local log="$1"
-    local faults=0 prefetched=0 hits=0 hit_rate=0 total_pages=0 eager_pages=0
+    # -1 = handler died before printing stats (not "zero faults")
+    local faults=-1 prefetched=-1 hits=-1 hit_rate=-1 total_pages=-1 eager_pages=0
 
     if [ -f "$log" ]; then
         # "Prefetch stats: N faults, N prefetched, N hits (N% hit rate)"

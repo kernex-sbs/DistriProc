@@ -14,7 +14,10 @@ source "$SCRIPT_DIR/lib.sh"
 # When running under sudo, include the invoking user's Python packages
 if [ -n "${SUDO_USER:-}" ]; then
     USER_SITE=$(sudo -u "$SUDO_USER" python3 -m site --user-site 2>/dev/null || true)
-    if [ -n "$USER_SITE" ] && [ -d "$USER_SITE" ]; then
+    # Skip when run_bench_env.sh already placed it behind the venv;
+    # prepending again would let ~/.local torch shadow the CPU venv.
+    if [ -n "$USER_SITE" ] && [ -d "$USER_SITE" ] &&
+       [[ ":${PYTHONPATH:-}:" != *":$USER_SITE:"* ]]; then
         export PYTHONPATH="${USER_SITE}${PYTHONPATH:+:$PYTHONPATH}"
     fi
 fi
@@ -151,6 +154,12 @@ run_iteration() {
     WORKLOAD_PID=""
     log_info "[$wl_name/$mode] checkpoint took ${checkpoint_ms}ms"
 
+    # Optional hook: reset passive TTFR signals while the process is dead,
+    # so a write landing before the probe starts is not discarded.
+    if declare -F workload_pre_restore >/dev/null; then
+        workload_pre_restore "$work_dir"
+    fi
+
     # 4. Restore — record t_start for TTFR measurement
     RESTORE_T_START=0
     if [ "$mode" = "full" ]; then
@@ -242,6 +251,7 @@ for wl in "${WORKLOAD_LIST[@]}"; do
         log_warn "Workload script $wl_script not found, skipping"
         continue
     fi
+    unset -f workload_pre_restore   # optional hook; don't leak across workloads
     source "$wl_script"
 
     # Check dependencies

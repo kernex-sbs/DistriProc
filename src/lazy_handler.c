@@ -28,6 +28,7 @@
 #include <sys/un.h>
 #include <sys/types.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -122,6 +123,12 @@ struct async_prefetch_ctx {
 	uint64_t pages_prefetched;
 	uint64_t dropped_requests;
 	uint64_t skipped_duplicates;
+	/* Fault-path cost of enqueue (lock wait + duplicate scan).
+	 * DISTRIPROC_PREFETCH_DEDUP=0 skips the O(depth) scan, for ablation. */
+	int no_dedup;
+	uint64_t enq_calls;
+	uint64_t enq_ns;
+	uint64_t enq_depth_sum;
 };
 
 static void signal_handler(int sig)
@@ -248,6 +255,13 @@ static int connect_page_server(const char *address, int port)
 		close(fd);
 		return -1;
 	}
+
+	/* Pipelined 8-byte requests otherwise sit in Nagle until the
+	 * previous response's ACK; measured ~41 ms per batch on loopback.
+	 * DISTRIPROC_TCP_NODELAY=0 restores the original transport. */
+	const char *nd = getenv("DISTRIPROC_TCP_NODELAY");
+	int one = !(nd && strcmp(nd, "0") == 0);
+	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 
 	return fd;
 }
@@ -433,6 +447,8 @@ static int async_prefetch_init(struct async_prefetch_ctx *ctx, int uffd,
 	ctx->address = address;
 	ctx->port = port;
 	ctx->served = served;
+	const char *dd = getenv("DISTRIPROC_PREFETCH_DEDUP");
+	ctx->no_dedup = dd && strcmp(dd, "0") == 0;
 
 	if (pthread_mutex_init(&ctx->mu, NULL) != 0)
 		return -1;
@@ -455,9 +471,11 @@ static int async_prefetch_enqueue(struct async_prefetch_ctx *ctx,
 	int enqueued = 0;
 
 	pthread_mutex_lock(&ctx->mu);
+	ctx->enq_calls++;
+	ctx->enq_depth_sum += (uint64_t)ctx->count;
 	for (int i = 0; i < ntargets; i++) {
 		int duplicate = 0;
-		for (int j = 0; j < ctx->count; j++) {
+		for (int j = 0; !ctx->no_dedup && j < ctx->count; j++) {
 			int idx = (ctx->head + j) % PREFETCH_QUEUE_SIZE;
 			if (ctx->queue[idx] == targets[i]) {
 				duplicate = 1;
@@ -628,7 +646,10 @@ static void *async_prefetch_thread(void *arg)
 		while (ctx->count == 0 && !ctx->stop)
 			pthread_cond_wait(&ctx->cv, &ctx->mu);
 
-		if (ctx->count == 0 && ctx->stop) {
+		/* Don't drain on stop: a backlogged queue (thousands of pages
+		 * behind a stalled connection) outlived bench.sh's 3 s kill
+		 * deadline, so stats were lost and recorded as zeros. */
+		if (ctx->stop) {
 			pthread_mutex_unlock(&ctx->mu);
 			break;
 		}
@@ -960,8 +981,14 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 				served_insert(&served, page_addr);
 			}
 
-			if (nprefetch > 0 && prefetch_started)
+			if (nprefetch > 0 && prefetch_started) {
+				struct timespec e0, e1;
+				clock_gettime(CLOCK_MONOTONIC, &e0);
 				async_prefetch_enqueue(&prefetch_ctx, prefetch_targets, nprefetch);
+				clock_gettime(CLOCK_MONOTONIC, &e1);
+				prefetch_ctx.enq_ns += (uint64_t)((e1.tv_sec - e0.tv_sec) * 1000000000LL +
+								  (e1.tv_nsec - e0.tv_nsec));
+			}
 
 			history_push(&history, page_addr);
 
@@ -1000,6 +1027,16 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 
 done:
 	if (prefetch_started) {
+		/* Printed before the join: a backlogged worker can outlive
+		 * bench.sh's 3 s SIGKILL deadline, losing the stats below. */
+		pthread_mutex_lock(&prefetch_ctx.mu);
+		printf("Enqueue: %lu calls, %.1f ms on fault path, mean depth %.0f, dedup=%s\n",
+		       (unsigned long)prefetch_ctx.enq_calls,
+		       prefetch_ctx.enq_ns / 1e6,
+		       prefetch_ctx.enq_calls ? (double)prefetch_ctx.enq_depth_sum / prefetch_ctx.enq_calls : 0.0,
+		       prefetch_ctx.no_dedup ? "off" : "linear");
+		pthread_mutex_unlock(&prefetch_ctx.mu);
+		fflush(stdout);
 		async_prefetch_stop(&prefetch_ctx);
 		pthread_join(prefetch_ctx.tid, NULL);
 	}

@@ -165,6 +165,12 @@ def main():
 
         while True:
             conn, addr = s.accept()
+            # A 4 KB page is sub-MSS on loopback (and its tail is on a real
+            # NIC), so Nagle holds pipelined responses for the client's
+            # delayed ACK: ~41 ms per batch. DISTRIPROC_TCP_NODELAY=0 restores
+            # the original transport.
+            nodelay = os.environ.get("DISTRIPROC_TCP_NODELAY", "1") != "0"
+            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, int(nodelay))
             # Each client in its own thread (needed for eager fetch + fault handler)
             fd_cache = {}  # per-thread file handle cache
             t = threading.Thread(
