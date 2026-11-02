@@ -111,6 +111,7 @@ handler_args_for_mode() {
     local mode="$1"
     case "$mode" in
         full)           echo "__FULL__" ;;
+        full-net)       echo "__FULL__" ;;
         lazy)           echo "--no-prefetch" ;;
         lazy-prefetch)  echo "--prefetch-seq 16 --prefetch-stride 8" ;;
         lazy-adaptive)  echo "--prefetch-seq 16 --prefetch-stride 8 --adaptive-prefetch" ;;
@@ -162,7 +163,22 @@ run_iteration() {
 
     # 4. Restore — record t_start for TTFR measurement
     RESTORE_T_START=0
-    if [ "$mode" = "full" ]; then
+    if [ "$mode" = "full-net" ]; then
+        # Eager over the network: the clock starts before the image moves,
+        # through the same (netem-shaped) path the page server uses.
+        port=$(find_available_port 9999)
+        python3 -u "$SCRIPT_DIR/xfer_images.py" serve "$work_dir" "$port" \
+            > "$work_dir/xfer.log" 2>&1 &
+        track_pid $!
+        for _ in $(seq 100); do
+            grep -q ready "$work_dir/xfer.log" 2>/dev/null && break; sleep 0.05
+        done
+        local net_dir="$work_dir/net-images"
+        RESTORE_T_START=$(time_ms)
+        python3 "$SCRIPT_DIR/xfer_images.py" recv 127.0.0.1 "$port" "$net_dir"
+        restored_pid=$(criu_restore_full "$net_dir")
+        log_info "[$wl_name/$mode] image moved + full restore, PID=$restored_pid"
+    elif [ "$mode" = "full" ]; then
         # Full restore — no page server or handler
         RESTORE_T_START=$(time_ms)
         restored_pid=$(criu_restore_full "$work_dir")
@@ -204,7 +220,7 @@ run_iteration() {
         kill -9 "$restored_pid" 2>/dev/null || true
     fi
 
-    if [ "$mode" != "full" ] && [ -n "${handler_pid:-}" ]; then
+    if [ "${mode#full}" = "$mode" ] && [ -n "${handler_pid:-}" ]; then
         # Send SIGTERM — handler checks got_signal on next poll timeout (≤1s),
         # then prints stats and exits cleanly
         kill "$handler_pid" 2>/dev/null || true
