@@ -55,7 +55,9 @@ of a small workload 60$\times$, inventing a 24$\times$ lazy-restore win that is
 in fact a 2.4$\times$ loss. In a single session we reproduce the original
 numbers within 10\,\% with Nagle on and invert them with Nagle off: prefetch
 cuts TTFR by 48\,\% at loopback and 87\,\% at 1\,ms RTT, with no crossover
-anywhere from 0 to 2\,ms. We describe how each artifact hid, the signature
+anywhere from 0 to 2\,ms. On a real two-machine 1\,Gb/s link the server-side
+stall disappears, and prefetch cuts TTFR by about 60\,\% with either setting:
+loopback was the worst case for the bug. We describe how each artifact hid, the signature
 that would have exposed it, and a short checklist for remote-paging
 measurements.
 \end{abstract}
@@ -470,6 +472,60 @@ successor system's ``bandwidth-aware'' regime gate had the same flaw: it was
 estimating the Nagle-limited ${\sim}700$ pages/s and switching regimes on it.
 
 % ─────────────────────────────────────────────────────────────────────────────
+\section{On a Real Network}
+\label{sec:real}
+
+All of the above used loopback with injected delay. We repeated the
+experiment on two Raspberry Pi~5s (8\,GB, Linux 6.18.59 built with
+\uffd and 4\,KB pages, CRIU 4.1.1, PyTorch 2.15 CPU) joined by a direct
+1\,Gb/s cable (MTU 1500, RTT 166\us). One Pi checkpoints and restores the
+workload, the other runs the page server. Arms alternate per iteration,
+$n\!=\!20$. On arm64 the ResNet process maps more memory (74.7k pages, 22.4k
+faults under lazy), so absolute times are not comparable with the x86 runs.
+
+\begin{table}[t]
+\centering
+\caption{Two-machine PyTorch TTFR (ms, mean $\pm$ 95\,\% CI, $n\!=\!20$),
+RTT 166\us over a direct 1\,Gb/s link, and the standalone repro
+(Table~\ref{tab:repro}) run across the same link: median batch time.}
+\label{tab:real}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+mode & Nagle on & \nd & \nd{} gain \\
+\midrule
+lazy     & $2579\pm8$ & $2579\pm6$ & 0\,\% \\
+prefetch & $1084\pm4$ & $1015\pm5$ & $-6\,\%$ \\
+adaptive & $1157\pm9$ & $1026\pm6$ & $-11\,\%$ \\
+\midrule
+\multicolumn{4}{@{}l}{repro, batch of 8 / 32 (\textmu s), \nd (server, client):} \\
+off, off & \multicolumn{3}{r}{482 / 1{,}356} \\
+on, off  & \multicolumn{3}{r}{510 / 1{,}347} \\
+off, on  & \multicolumn{3}{r}{342 / 1{,}225} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:real} shows that prefetch cuts TTFR by 58\,\% with Nagle on and
+61\,\% with \nd, and that the transport bug costs only 6--11\,\%. The repro
+explains why. Across the wire, the server's Nagle setting makes no difference:
+a 4\,KB page is larger than the 1448-byte MSS, so it leaves as full-sized
+segments that the receiver acknowledges promptly, and the 40\,ms delayed-ACK
+stall never forms. On the same Pi's loopback the stall is back at 44\,ms per
+batch. What remains on the wire is client-side Nagle holding the second
+8-byte request of each batch for about one RTT (482 vs.\ 342\us for a batch
+of 8). The bug was real, but loopback, the configuration we treated as
+best-case, was where it did the most damage.
+
+Bringing up the Pis also exposed two handler bugs that never triggered on
+x86: arm64 PyTorch discards memory after restore (\texttt{MADV\_DONTNEED},
+delivered as \uffd \texttt{REMOVE}), and the handler treated a refault on a
+discarded page as already served and never answered it. It also exited on
+\texttt{UNMAP}. Neither event appears in any x86 log, so the x86 data is
+unaffected; both are fixed.
+
+% ─────────────────────────────────────────────────────────────────────────────
 \section{Lessons}
 \label{sec:lessons}
 
@@ -486,7 +542,9 @@ serial smoke test passes. Look for 40\,ms quanta.
 
 \textbf{Loopback is not a neutral baseline.} Loopback's ${\approx}64$\,KB MSS
 makes every page a ``small'' segment for Nagle, so it maximized the artifact
-in exactly the configuration we called best-case.
+in exactly the configuration we called best-case. On a real link the same bug
+cost 6--11\,\% instead of 3.7$\times$ (\S\ref{sec:real}). Emulated RTT on
+loopback keeps loopback's segment sizes; validate on a real NIC.
 
 \textbf{Never let missing data default to zero.} Emit a sentinel, count
 missing rows per cell, and look at per-row distributions before means. A
@@ -510,11 +568,12 @@ artifacts compounded into a coherent, wrong story.
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Limitations}
 
-All corrected measurements are single-host with netem-injected RTT. The
-original two-machine LAN result ($-72\,\%$ at 311\us) ran with Nagle on and
-has not been redone; we expect a larger gain, but have not measured it. One
-machine, one kernel and three workloads; the PyTorch adaptive cells carry
-single-iteration outliers. The duplicate-scan tax depends on queue depth and
+The RTT sweep is single-host with netem-injected RTT; the real-network check
+is one RTT (166\us) on one pair of arm64 boards with a different footprint, so
+it confirms direction and mechanism, not the sweep's magnitudes. The
+original two-machine LAN run ($-72\,\%$ at 311\us, x86 hosts) was not
+repeated on the same hardware. Three workloads; the x86 PyTorch adaptive
+cells carry single-iteration outliers. The duplicate-scan tax depends on queue depth and
 build flags, so its magnitude is specific to our prototype, but the pattern
 (a stalled side channel taxing the critical path through shared state) is not.
 
@@ -526,7 +585,10 @@ Code, raw CSVs and per-run handler logs:
 arms; \texttt{eval/analyze\_nodelay.py} regenerates Tables~\ref{tab:matrix}
 and~\ref{tab:sweep}; \texttt{eval/nagle\_repro.py} reproduces
 Table~\ref{tab:repro} without root; \texttt{eval/ablate\_dedup.sh} runs
-Table~\ref{tab:ablate}. The handler and page server read
+Table~\ref{tab:ablate}; \texttt{eval/crosshost\_2machine.sh} runs
+Table~\ref{tab:real}, and \texttt{nagle\_repro.py serve PORT} /
+\texttt{nagle\_repro.py HOST PORT} runs the repro across two hosts. The
+handler and page server read
 \texttt{DISTRIPROC\_TCP\_NODELAY=0} to restore the original transport.
 
 \bibliographystyle{IEEEtran}
