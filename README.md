@@ -1,5 +1,31 @@
 # DistriProc — When Prefetch Hurts
 
+> **Correction (2026-11-02): the headline findings below are measurement
+> artifacts. Do not cite them.**
+>
+> - **Loopback slowdown and RTT crossover.** The page server never set
+>   `TCP_NODELAY`. Nagle's algorithm combined with delayed ACKs stalled every
+>   pipelined prefetch batch for ~41 ms. That backed up the prefetch queue, and a
+>   linear duplicate scan on the fault path turned the backlog into ~600 ms of CPU
+>   time. With `TCP_NODELAY`, fixed prefetch *cuts* PyTorch TTFR by 50% at
+>   loopback (618 → 311 ms) and by 87% at 1 ms RTT. There is no crossover anywhere
+>   from 0 to 2 ms RTT.
+> - **"85% fewer page faults".** In most runs the handler was killed before it
+>   printed its statistics, and the harness recorded the missing values as zero.
+>   With Nagle on, prefetch did not reduce faults at all.
+> - **"24.5× faster lazy restore" (test\_loop).** A probe race charged full
+>   restore an extra 1 s. Full restore actually takes 17 ms, so lazy restore
+>   (42 ms) is about 2.4× *slower*.
+> - **Adaptive controller "recovers" the regression.** It was reacting to
+>   symptoms of the transport bug.
+>
+> Prefetch still helps at high RTT; that finding holds, with a larger effect.
+> The two-machine LAN result (−72% at 311 µs) ran without `TCP_NODELAY` and is
+> being redone. Fixes, the remeasured data and a write-up of the four
+> artifacts are on branch
+> [`nodelay-remeasure`](https://github.com/kernex-sbs/distriProc/tree/nodelay-remeasure)
+> (`eval/results/nodelay-remeasure.md`, `paper-pitfall/`).
+
 **An RTT-dependent study of speculative paging in CRIU lazy restore, plus a
 userspace runtime that acts on it.**
 
