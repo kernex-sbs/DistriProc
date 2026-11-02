@@ -130,7 +130,7 @@ start_remote_server() {  # $1=local image dir
         log_error "image-file count mismatch A=$na B=$nb after rsync"; return 1
     fi
     # -u = unbuffered, so the startup banner + any traceback survive in the log.
-    ssh "$PAGE_SERVER_SSH" "cd '$REMOTE_ROOT' && ${B_PYTHONPATH:+PYTHONPATH=$B_PYTHONPATH }PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python DISTRIPROC_TCP_NODELAY=$DISTRIPROC_TCP_NODELAY nohup python3 -u '$REMOTE_PS' --host 0.0.0.0 --images-dir '$REMOTE_WORK' --port '$PORT' > '$REMOTE_WORK/page_server.log' 2>&1 & echo \$! > '$REMOTE_PID_FILE'" >/dev/null 2>&1 &
+    ssh "$PAGE_SERVER_SSH" "cd '$REMOTE_ROOT' && ${B_PYTHONPATH:+PYTHONPATH=$B_PYTHONPATH }PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python DISTRIPROC_TCP_NODELAY=$DISTRIPROC_TCP_NODELAY nohup python3 -u src/criu_page_server.py --host 0.0.0.0 --images-dir '$REMOTE_WORK' --port '$PORT' > '$REMOTE_WORK/page_server.log' 2>&1 & echo \$! > '$REMOTE_PID_FILE'" >/dev/null 2>&1 &
     # Wait until A can connect to B:PORT.
     local deadline=$(( $(date +%s) + 10 ))
     while [ "$(date +%s)" -lt "$deadline" ]; do
@@ -192,7 +192,10 @@ for iter in $(seq 1 "$ITERS"); do
     [ -n "$restored_pid" ] && kill -9 "$restored_pid" 2>/dev/null || true
     if [ -n "${handler_pid:-}" ]; then
         kill "$handler_pid" 2>/dev/null || true
-        sleep 1; kill -9 "$handler_pid" 2>/dev/null || true; sleep 0.2
+        # The handler polls for SIGTERM about once a second; 1 s was too
+        # short and its stats were lost (recorded as -1).
+        for _ in $(seq 25); do kill -0 "$handler_pid" 2>/dev/null || break; sleep 0.2; done
+        kill -9 "$handler_pid" 2>/dev/null || true; sleep 0.2
     fi
     stats=$(parse_handler_stats "$work_dir/handler.log")
     stop_remote_server
