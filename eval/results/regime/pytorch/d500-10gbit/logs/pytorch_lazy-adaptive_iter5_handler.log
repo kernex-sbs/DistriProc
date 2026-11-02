@@ -1,0 +1,48 @@
+Config: prefetch=on adaptive=on seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=(none)
+Listening on /tmp/distriproc-bench-pytorch-lazy-adaptive-HZDq1b/lazy-pages.socket
+Connected to page server at 127.0.0.1:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 2843769
+Received userfaultfd: 3
+Started async prefetch thread
+Handling page faults...
+Async prefetch: connected to page server
+Fault 1: 0x7fb19d72f000 (prefetched 16)
+Fault 2: 0x7fb1621ff000 (prefetched 16)
+Fault 3: 0x7fb1619fe000 (prefetched 16)
+Fault 4: 0x7fb1611fd000 (prefetched 16)
+Fault 5: 0x7fb1601fb000 (prefetched 16)
+Fault 6: 0x7fb1609fc000 (prefetched 16)
+Fault 7: 0x7fb15f9fa000 (prefetched 16)
+Fault 8: 0x7fb15f1f9000 (prefetched 16)
+Fault 9: 0x7fb15e9f8000 (prefetched 16)
+Fault 10: 0x7fb15e1f7000 (prefetched 16)
+Restore finished (magic received)
+Fault 100: 0x7fb158351000 (prefetched 16)
+Policy: faults=128 hits=0 prefetched=1632 drops=0 dup=0 dup_rate=0% qdepth=16 => prefetch=on seq 16->18 stride 8->9
+Fault 200: 0x7fb158e87000 (prefetched 18)
+Policy: faults=128 hits=0 prefetched=1737 drops=0 dup=0 dup_rate=0% qdepth=16 => prefetch=on seq 18->20 stride 9->10
+Fault 300: 0x5596151fd000 (prefetched 20)
+Policy: faults=128 hits=0 prefetched=1765 drops=0 dup=0 dup_rate=0% qdepth=28 => prefetch=on seq 20->22 stride 10->11
+Fault 400: 0x559615e6d000 (prefetched 2)
+Fault 500: 0x55960e5c2000 (prefetched 2)
+Policy: faults=128 hits=0 prefetched=1172 drops=0 dup=0 dup_rate=0% qdepth=5 => prefetch=on seq 22->24 stride 11->12
+Fault 600: 0x5596125dc000 (prefetched 24)
+Fault 700: 0x559615631000 (prefetched 23)
+Fault 800: 0x7fb1418fd000 (prefetched 24)
+Policy: faults=128 hits=0 prefetched=1952 drops=0 dup=0 dup_rate=0% qdepth=24 => prefetch=on seq 24->26 stride 12->13
+Fault 900: 0x7fb14794e000 (prefetched 1)
+Fault 1000: 0x7fb146b11000 (prefetched 26)
+Policy: faults=128 hits=0 prefetched=2645 drops=0 dup=0 dup_rate=0% qdepth=28 => prefetch=on seq 26->28 stride 13->14
+Fault 1100: 0x7fb1415db000 (prefetched 28)
+Policy: faults=128 hits=0 prefetched=2089 drops=0 dup=0 dup_rate=0% qdepth=2 => prefetch=on seq 28->30 stride 14->15
+Fault 1200: 0x7fb146956000 (prefetched 0)
+Policy: faults=128 hits=0 prefetched=2357 drops=0 dup=0 dup_rate=0% qdepth=30 => prefetch=on seq 30->32 stride 15->16
+Fault 1300: 0x7fb145f1b000 (prefetched 32)
+Fault 1400: 0x55960ea24000 (prefetched 31)
+Fault 1500: 0x7fb19cfdb000 (prefetched 22)
+Enqueue: 1443 calls, 1.7 ms on fault path, mean depth 3, dedup=linear
+Prefetch stats: 1522 faults, 22306 prefetched, 0 hits (0% hit rate)
+Total pages served: 23376
+Prefetch duplicates skipped: 234

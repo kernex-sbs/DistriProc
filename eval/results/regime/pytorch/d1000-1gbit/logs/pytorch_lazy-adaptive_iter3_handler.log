@@ -1,0 +1,46 @@
+Config: prefetch=on adaptive=on seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=(none)
+Listening on /tmp/distriproc-bench-pytorch-lazy-adaptive-HUOHao/lazy-pages.socket
+Connected to page server at 127.0.0.1:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 2882135
+Received userfaultfd: 3
+Started async prefetch thread
+Handling page faults...
+Async prefetch: connected to page server
+Fault 1: 0x7f9d5e319000 (prefetched 16)
+Fault 2: 0x7f9d225fe000 (prefetched 16)
+Fault 3: 0x7f9d22dff000 (prefetched 16)
+Fault 4: 0x7f9d21dfd000 (prefetched 16)
+Fault 5: 0x7f9d215fc000 (prefetched 16)
+Fault 6: 0x7f9d205fa000 (prefetched 16)
+Fault 7: 0x7f9d20dfb000 (prefetched 16)
+Fault 8: 0x7f9d1fdf9000 (prefetched 16)
+Fault 9: 0x7f9d1edf7000 (prefetched 16)
+Fault 10: 0x7f9d1f5f8000 (prefetched 16)
+Restore finished (magic received)
+Fault 100: 0x7f9d1997f000 (prefetched 16)
+Fault 200: 0x7f9d4318e000 (prefetched 16)
+Policy: faults=128 hits=0 prefetched=1610 drops=0 dup=0 dup_rate=0% qdepth=16 => prefetch=on seq 16->18 stride 8->9
+Fault 300: 0x562461213000 (prefetched 18)
+Fault 400: 0x562461d42000 (prefetched 4)
+Fault 500: 0x7f9d188c2000 (prefetched 13)
+Policy: faults=128 hits=0 prefetched=1220 drops=0 dup=0 dup_rate=0% qdepth=18 => prefetch=on seq 18->20 stride 9->10
+Fault 600: 0x56245a981000 (prefetched 20)
+Fault 700: 0x7f9d08a26000 (prefetched 9)
+Fault 800: 0x5624618a5000 (prefetched 14)
+Fault 900: 0x7f9d084dc000 (prefetched 20)
+Fault 1000: 0x7f9d082c7000 (prefetched 0)
+Policy: faults=128 hits=0 prefetched=1311 drops=0 dup=0 dup_rate=0% qdepth=0 => prefetch=on seq 20->22 stride 10->11
+Fault 1100: 0x7f9d07ff8000 (prefetched 0)
+Policy: faults=128 hits=0 prefetched=1469 drops=0 dup=0 dup_rate=0% qdepth=3 => prefetch=on seq 22->24 stride 11->12
+Fault 1200: 0x7f9d0779d000 (prefetched 24)
+Policy: faults=128 hits=0 prefetched=1732 drops=0 dup=0 dup_rate=0% qdepth=15 => prefetch=on seq 24->26 stride 12->13
+Fault 1300: 0x7f9d06bd5000 (prefetched 26)
+Fault 1400: 0x7f9d074b1000 (prefetched 9)
+Fault 1500: 0x7f9d0639a000 (prefetched 26)
+Fault 1600: 0x7f9d0610d000 (prefetched 26)
+Enqueue: 1586 calls, 2.7 ms on fault path, mean depth 12, dedup=linear
+Prefetch stats: 1690 faults, 21511 prefetched, 0 hits (0% hit rate)
+Total pages served: 22688
+Prefetch duplicates skipped: 320

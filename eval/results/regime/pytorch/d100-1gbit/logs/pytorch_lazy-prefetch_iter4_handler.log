@@ -1,0 +1,45 @@
+Config: prefetch=on adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=(none)
+Listening on /tmp/distriproc-bench-pytorch-lazy-prefetch-9Cbcfc/lazy-pages.socket
+Connected to page server at 127.0.0.1:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 2794720
+Received userfaultfd: 3
+Started async prefetch thread
+Handling page faults...
+Async prefetch: connected to page server
+Fault 1: 0x7f3b51145000 (prefetched 16)
+Fault 2: 0x7f3b15bff000 (prefetched 16)
+Fault 3: 0x7f3b14bfd000 (prefetched 16)
+Fault 4: 0x7f3b153fe000 (prefetched 16)
+Fault 5: 0x7f3b143fc000 (prefetched 16)
+Fault 6: 0x7f3b133fa000 (prefetched 16)
+Fault 7: 0x7f3b13bfb000 (prefetched 16)
+Fault 8: 0x7f3b12bf9000 (prefetched 16)
+Fault 9: 0x7f3b123f8000 (prefetched 16)
+Fault 10: 0x7f3b11bf7000 (prefetched 16)
+Restore finished (magic received)
+Fault 100: 0x7f3b0bc19000 (prefetched 16)
+Fault 200: 0x7f3b3889c000 (prefetched 16)
+Fault 300: 0x557813d7c000 (prefetched 16)
+Fault 400: 0x557815b0c000 (prefetched 6)
+Fault 500: 0x5578162cf000 (prefetched 6)
+Fault 600: 0x5578164bb000 (prefetched 16)
+Fault 700: 0x557815c1b000 (prefetched 3)
+Fault 800: 0x7fff59cb3000 (prefetched 7)
+Fault 900: 0x7f3afb601000 (prefetched 16)
+Fault 1000: 0x7f3afb0cd000 (prefetched 16)
+Fault 1100: 0x7f3afae52000 (prefetched 0)
+Fault 1200: 0x7f3afaad1000 (prefetched 16)
+Fault 1300: 0x7f3afa4a1000 (prefetched 16)
+Fault 1400: 0x7f3af9d2b000 (prefetched 0)
+Fault 1500: 0x7f3afa11a000 (prefetched 1)
+Fault 1600: 0x7f3af930b000 (prefetched 16)
+Fault 1700: 0x7f3af9819000 (prefetched 1)
+Fault 1800: 0x7f3b5000f000 (prefetched 11)
+Fault 1900: 0x7f3af8fad000 (prefetched 16)
+Fault 2000: 0x7f3b50515000 (prefetched 1)
+Enqueue: 1820 calls, 1.2 ms on fault path, mean depth 3, dedup=linear
+Prefetch stats: 2001 faults, 20334 prefetched, 0 hits (0% hit rate)
+Total pages served: 21939
+Prefetch duplicates skipped: 383

@@ -1,0 +1,47 @@
+Config: prefetch=on adaptive=on seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=(none)
+Listening on /tmp/distriproc-bench-pytorch-lazy-adaptive-iwCL3d/lazy-pages.socket
+Connected to page server at 127.0.0.1:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 2805578
+Received userfaultfd: 3
+Started async prefetch thread
+Handling page faults...
+Async prefetch: connected to page server
+Fault 1: 0x7f1eb2717000 (prefetched 16)
+Fault 2: 0x7f1e771ff000 (prefetched 16)
+Fault 3: 0x7f1e769fe000 (prefetched 16)
+Fault 4: 0x7f1e761fd000 (prefetched 16)
+Fault 5: 0x7f1e759fc000 (prefetched 16)
+Fault 6: 0x7f1e751fb000 (prefetched 16)
+Fault 7: 0x7f1e749fa000 (prefetched 16)
+Fault 8: 0x7f1e741f9000 (prefetched 16)
+Fault 9: 0x7f1e739f8000 (prefetched 16)
+Fault 10: 0x7f1e731f7000 (prefetched 16)
+Restore finished (magic received)
+Fault 100: 0x5580fe660000 (prefetched 16)
+Fault 200: 0x7f1e6cc82000 (prefetched 16)
+Fault 300: 0x5581002f5000 (prefetched 16)
+Fault 400: 0x558102474000 (prefetched 7)
+Fault 500: 0x5581026a8000 (prefetched 6)
+Policy: faults=128 hits=0 prefetched=1214 drops=0 dup=0 dup_rate=0% qdepth=13 => prefetch=on seq 16->18 stride 8->9
+Fault 600: 0x558102a0b000 (prefetched 18)
+Fault 700: 0x558101ad5000 (prefetched 3)
+Fault 800: 0x7f1e5697d000 (prefetched 18)
+Fault 900: 0x7f1e5cc99000 (prefetched 18)
+Fault 1000: 0x7f1e5c94b000 (prefetched 1)
+Fault 1100: 0x7f1e5c2ef000 (prefetched 0)
+Policy: faults=128 hits=0 prefetched=1132 drops=0 dup=0 dup_rate=0% qdepth=18 => prefetch=on seq 18->20 stride 9->10
+Fault 1200: 0x7f1e5be71000 (prefetched 20)
+Policy: faults=128 hits=0 prefetched=1479 drops=0 dup=0 dup_rate=0% qdepth=20 => prefetch=on seq 20->22 stride 10->11
+Fault 1300: 0x7f1e5bdf8000 (prefetched 22)
+Fault 1400: 0x7f1e5b67a000 (prefetched 22)
+Fault 1500: 0x7f1e5b4dc000 (prefetched 22)
+Fault 1600: 0x7f1e5a918000 (prefetched 22)
+Fault 1700: 0x7f1e5ad12000 (prefetched 3)
+Fault 1800: 0x7f1e6d4de000 (prefetched 12)
+Fault 1900: 0x7f1e993b9000 (prefetched 22)
+Enqueue: 1769 calls, 2.4 ms on fault path, mean depth 18, dedup=linear
+Prefetch stats: 1929 faults, 20983 prefetched, 0 hits (0% hit rate)
+Total pages served: 22361
+Prefetch duplicates skipped: 752

@@ -49,3 +49,6 @@ eval/results/tl-fix*/
 # Dedup ablation: keep handler logs (Enqueue/depth lines feed the paper)
 eval/results/ablate-dedup/*/logs/*
 !eval/results/ablate-dedup/*/logs/*_handler.log
+# Regime sweep: keep CSVs + handler logs (fault/served counts), drop CRIU logs
+eval/results/regime/*/*/logs/*
+!eval/results/regime/*/*/logs/*_handler.log
