@@ -42,6 +42,8 @@
 #include <limits.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <stdatomic.h>
+#include <time.h>
 
 #include "hashset.h"
 
@@ -52,6 +54,9 @@
 #define HISTORY_SIZE 8
 #define MAX_PREFETCH_TARGETS 64
 #define EAGER_BATCH_SIZE 32
+#define EAGER_RECV_PAGES 64  /* recv buffer; pages install as they complete */
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define STREAM_MAGIC UINT64_MAX  /* page server: push a page list (criu_page_server.py) */
 #define PREFETCH_QUEUE_SIZE 8192
 #define ADAPT_WINDOW_FAULTS 128
 
@@ -94,12 +99,22 @@ struct fault_history {
 	int count;
 };
 
+struct trace_pos {
+	uint64_t addr;
+	size_t pos;
+};
+
 struct eager_ctx {
 	int uffd;
 	const char *address;
 	int port;
 	const char *hot_pages_file;
 	struct served_state *served;
+	uint64_t *a;               /* pages in stream order (compacted by the thread) */
+	size_t n;
+	struct trace_pos *idx;     /* sorted by addr: page -> stream position */
+	_Atomic size_t next;       /* positions below this have landed */
+	_Atomic int fd;            /* stream socket; shut down at exit */
 };
 
 #define MAX_REMOVED_RANGES 256
@@ -285,6 +300,17 @@ static int recv_exact(int fd, void *buf, int n)
 			return -1;
 		}
 		total += r;
+	}
+	return 0;
+}
+
+static int send_all(int fd, const void *buf, size_t n)
+{
+	for (size_t off = 0; off < n;) {
+		ssize_t w = send(fd, (const char *)buf + off, n - off, 0);
+		if (w <= 0)
+			return -1;
+		off += (size_t)w;
 	}
 	return 0;
 }
@@ -736,81 +762,154 @@ static void *async_prefetch_thread(void *arg)
 	return NULL;
 }
 
-/* ── Eager fetch thread (hot pages) ───────────────────── */
+/* ── Eager fetch thread (hot pages / recorded trace) ──── */
 
+static int trace_pos_cmp(const void *x, const void *y)
+{
+	uint64_t a = ((const struct trace_pos *)x)->addr;
+	uint64_t b = ((const struct trace_pos *)y)->addr;
+	return (a > b) - (a < b);
+}
+
+/* Load the page list and an addr -> position index. Duplicates keep any
+ * position; the stream skips the repeat as already served. */
+static int eager_load(struct eager_ctx *ctx)
+{
+	FILE *f = fopen(ctx->hot_pages_file, "rb");
+	size_t cap = 0;
+	uint64_t addr;
+
+	if (!f) {
+		fprintf(stderr, "Eager fetch: cannot open %s\n", ctx->hot_pages_file);
+		return -1;
+	}
+	ctx->a = NULL;
+	ctx->n = 0;
+	while (fread(&addr, sizeof(addr), 1, f) == 1) {
+		if (ctx->n == cap) {
+			cap = cap ? cap * 2 : 4096;
+			uint64_t *na = realloc(ctx->a, cap * sizeof(*na));
+			if (!na)
+				goto fail;
+			ctx->a = na;
+		}
+		ctx->a[ctx->n++] = addr;
+	}
+	fclose(f);
+	ctx->idx = malloc((ctx->n ? ctx->n : 1) * sizeof(*ctx->idx));
+	if (!ctx->idx)
+		goto fail_closed;
+	for (size_t i = 0; i < ctx->n; i++)
+		ctx->idx[i] = (struct trace_pos){ ctx->a[i], i };
+	qsort(ctx->idx, ctx->n, sizeof(*ctx->idx), trace_pos_cmp);
+	atomic_init(&ctx->next, 0);
+	atomic_init(&ctx->fd, -1);
+	return 0;
+fail:
+	fclose(f);
+fail_closed:
+	perror("eager_load");
+	free(ctx->a);
+	return -1;
+}
+
+/* Demand-fault class against the stream: 0 = the stream already delivered
+ * it (fault raced the install), 1 = in the trace, not yet arrived, 2 = not
+ * in the trace. */
+static int eager_class(struct eager_ctx *ctx, uint64_t addr)
+{
+	struct trace_pos key = { addr, 0 };
+	struct trace_pos *t = bsearch(&key, ctx->idx, ctx->n, sizeof(key), trace_pos_cmp);
+	if (!t)
+		return 2;
+	return t->pos < atomic_load_explicit(&ctx->next, memory_order_relaxed) ? 0 : 1;
+}
+
+/* Receive pages for addrs[0..n) back to back; install each as soon as it
+ * is complete. track: publish progress to ctx->next (trace part only).
+ * Returns pages received, which is < n on a broken stream. */
+static size_t recv_install(struct eager_ctx *ctx, int fd, const uint64_t *addrs,
+			   size_t n, int track, int *installed)
+{
+	static char buf[EAGER_RECV_PAGES * PAGE_SIZE] __attribute__((aligned(PAGE_SIZE)));
+	size_t have = 0, i = 0;
+
+	while (i < n) {
+		size_t want = (n - i) * PAGE_SIZE - have;
+		ssize_t got = recv(fd, buf + have, MIN(sizeof(buf) - have, want), 0);
+		if (got <= 0) {
+			perror("eager recv");
+			break;
+		}
+		have += (size_t)got;
+		size_t full = have / PAGE_SIZE;
+		for (size_t p = 0; p < full; p++, i++) {
+			/* ponytail: same REMOVE-vs-install window as the prefetch worker. */
+			if (!served_contains(ctx->served, addrs[i]) &&
+			    !served_removed(ctx->served, addrs[i]) &&
+			    install_page(ctx->uffd, addrs[i], buf + p * PAGE_SIZE) == 0) {
+				served_insert(ctx->served, addrs[i]);
+				(*installed)++;
+			}
+			if (track)
+				atomic_store_explicit(&ctx->next, i + 1, memory_order_relaxed);
+		}
+		have -= full * PAGE_SIZE;
+		memmove(buf, buf + full * PAGE_SIZE, have);
+	}
+	return i;
+}
+
+/* Streams the file's pages in file order over its own connection: one
+ * request carries the whole list (server push), so TCP alone sets the rate
+ * and each page is installed as soon as it lands. Demand faults keep the
+ * main connection to themselves. DISTRIPROC_STREAM_REST=1: the server then
+ * streams every other image page, nearest to a listed page first. */
 static void *eager_fetch_thread(void *arg)
 {
 	struct eager_ctx *ctx = (struct eager_ctx *)arg;
-	FILE *f;
-	uint64_t addr;
-	uint64_t batch[EAGER_BATCH_SIZE];
-	char page_buf[PAGE_SIZE];
-	int batch_idx = 0;
+	const char *rest_env = getenv("DISTRIPROC_STREAM_REST");
+	int rest = rest_env && strcmp(rest_env, "1") == 0;
+	uint64_t hdr[2] = { rest ? STREAM_MAGIC - 1 : STREAM_MAGIC, ctx->n };
+	uint64_t *more = NULL, m = 0;
+	size_t got = 0, got_rest = 0;
 	int total_installed = 0;
+	struct timespec t0, t1, t2;
 
-	/* Open separate TCP connection */
+	clock_gettime(CLOCK_MONOTONIC, &t0);
 	int tcp_fd = connect_page_server(ctx->address, ctx->port);
 	if (tcp_fd < 0) {
 		fprintf(stderr, "Eager fetch: failed to connect to page server\n");
 		return NULL;
 	}
+	atomic_store(&ctx->fd, tcp_fd);
+	printf("Eager fetch: streaming %zu pages%s\n", ctx->n, rest ? " + rest" : "");
 
-	printf("Eager fetch: connected to page server\n");
-
-	f = fopen(ctx->hot_pages_file, "rb");
-	if (!f) {
-		fprintf(stderr, "Eager fetch: cannot open %s\n", ctx->hot_pages_file);
-		close(tcp_fd);
-		return NULL;
+	if (send_all(tcp_fd, hdr, sizeof(hdr)) < 0 ||
+	    send_all(tcp_fd, ctx->a, ctx->n * sizeof(*ctx->a)) < 0) {
+		perror("eager send");
+		goto done;
 	}
-
-	while (fread(&addr, sizeof(uint64_t), 1, f) == 1) {
-		if (served_contains(ctx->served, addr))
-			continue;
-		batch[batch_idx++] = addr;
-
-		if (batch_idx == EAGER_BATCH_SIZE) {
-			/* Send all requests in batch */
-			for (int i = 0; i < batch_idx; i++) {
-				if (send(tcp_fd, &batch[i], sizeof(uint64_t), 0) != sizeof(uint64_t)) {
-					perror("eager send");
-					goto done;
-				}
-			}
-			/* Receive and install */
-			for (int i = 0; i < batch_idx; i++) {
-				if (recv_exact(tcp_fd, page_buf, PAGE_SIZE) < 0)
-					goto done;
-				if (install_page(ctx->uffd, batch[i], page_buf) == 0) {
-					served_insert(ctx->served, batch[i]);
-					total_installed++;
-				}
-			}
-			batch_idx = 0;
-		}
-	}
-
-	/* Flush remaining batch */
-	if (batch_idx > 0) {
-		for (int i = 0; i < batch_idx; i++) {
-			if (send(tcp_fd, &batch[i], sizeof(uint64_t), 0) != sizeof(uint64_t)) {
-				perror("eager send (flush)");
-				goto done;
-			}
-		}
-		for (int i = 0; i < batch_idx; i++) {
-			if (recv_exact(tcp_fd, page_buf, PAGE_SIZE) < 0)
-				goto done;
-			if (install_page(ctx->uffd, batch[i], page_buf) == 0) {
-				served_insert(ctx->served, batch[i]);
-				total_installed++;
-			}
-		}
-	}
+	got = recv_install(ctx, tcp_fd, ctx->a, ctx->n, 1, &total_installed);
+	clock_gettime(CLOCK_MONOTONIC, &t1);
+	if (rest && got == ctx->n && recv_exact(tcp_fd, &m, sizeof(m)) == 0 &&
+	    (more = malloc((m ? m : 1) * sizeof(*more))) &&
+	    recv_exact(tcp_fd, more, (int)(m * sizeof(*more))) == 0)
+		got_rest = recv_install(ctx, tcp_fd, more, m, 0, &total_installed);
 
 done:
-	fclose(f);
-	close(tcp_fd);
+	/* tcp_fd stays open: handle_faults shuts it down and closes it after
+	 * the join, so its number is never reused under a late shutdown. */
+	free(more);
+	clock_gettime(CLOCK_MONOTONIC, &t2);
+	if (!rest)
+		t1 = t2;
+	double ms = (t1.tv_sec - t0.tv_sec) * 1e3 + (t1.tv_nsec - t0.tv_nsec) / 1e6;
+	printf("Eager fetch: streamed in %.0f ms (%.0f pages/s)\n", ms, ms > 0 ? got * 1e3 / ms : 0);
+	if (rest)
+		printf("Eager fetch: rest %zu/%lu pages, done at %.0f ms\n", got_rest,
+		       (unsigned long)m,
+		       (t2.tv_sec - t0.tv_sec) * 1e3 + (t2.tv_nsec - t0.tv_nsec) / 1e6);
 	printf("Eager fetch: installed %d hot pages\n", total_installed);
 	return NULL;
 }
@@ -839,6 +938,11 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 	int eager_started = 0;
 	struct async_prefetch_ctx prefetch_ctx;
 	int prefetch_started = 0;
+	uint64_t cls_n[3] = {0}, cls_ns[3] = {0};
+	/* DISTRIPROC_TRACE=FILE: log each fetched fault address in order, in
+	 * the --hot-pages format, so a later restore can stream it back. */
+	const char *trace_path = getenv("DISTRIPROC_TRACE");
+	FILE *trace = trace_path ? fopen(trace_path, "wb") : NULL;
 
 	if (served_state_init(&served, 1024) < 0) {
 		fprintf(stderr, "served_state_init failed\n");
@@ -881,7 +985,8 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 		ectx.port = port;
 		ectx.hot_pages_file = hot_pages_file;
 		ectx.served = &served;
-		if (pthread_create(&eager_tid, NULL, eager_fetch_thread, &ectx) == 0) {
+		if (eager_load(&ectx) == 0 &&
+		    pthread_create(&eager_tid, NULL, eager_fetch_thread, &ectx) == 0) {
 			eager_started = 1;
 			printf("Started eager fetch thread\n");
 		} else {
@@ -915,6 +1020,8 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 		}
 
 		if (ret == 0) {
+			if (trace)
+				fflush(trace);  /* survive bench.sh's SIGKILL */
 			if (got_signal)
 				break;
 			continue;
@@ -1005,7 +1112,9 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 
 			targets[ntargets++] = page_addr;  /* faulted page only */
 
-			if (pcfg->enabled) {
+			/* With a stream, prefetch only around pages it won't bring. */
+			int cls = eager_started ? eager_class(&ectx, page_addr) : -1;
+			if (pcfg->enabled && (cls < 0 || cls == 2)) {
 				int64_t stride = detect_stride(&history);
 
 				if (stride != 0) {
@@ -1029,9 +1138,21 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 				}
 			}
 
+			if (trace)
+				fwrite(&page_addr, sizeof(page_addr), 1, trace);
+
 			/* Faulted page stays on the critical path. */
-			if (pipeline_fetch_install(tcp_fd, uffd, targets, ntargets,
-						   &served, page) < 0) {
+			struct timespec f0, f1;
+			clock_gettime(CLOCK_MONOTONIC, &f0);
+			int fetch_rc = pipeline_fetch_install(tcp_fd, uffd, targets, ntargets,
+							      &served, page);
+			clock_gettime(CLOCK_MONOTONIC, &f1);
+			if (cls >= 0) {
+				cls_n[cls]++;
+				cls_ns[cls] += (uint64_t)((f1.tv_sec - f0.tv_sec) * 1000000000LL +
+							  (f1.tv_nsec - f0.tv_nsec));
+			}
+			if (fetch_rc < 0) {
 				fprintf(stderr, "Failed to fetch page %#lx\n",
 					(unsigned long)page_addr);
 				/* Serve a zero page as fallback for the faulted page */
@@ -1100,8 +1221,24 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 	}
 
 	/* Wait for eager fetch thread */
-	if (eager_started)
+	if (eager_started) {
+		/* A rest stream can run past bench.sh's kill deadline: cut it so
+		 * the stats below get printed. */
+		int sfd = atomic_load(&ectx.fd);
+		if (sfd >= 0)
+			shutdown(sfd, SHUT_RDWR);
 		pthread_join(eager_tid, NULL);
+		if (sfd < 0)
+			sfd = atomic_load(&ectx.fd);  /* connected after our check */
+		if (sfd >= 0)
+			close(sfd);
+		printf("Stream faults: landed %lu (%.1f ms), ahead %lu (%.1f ms), miss %lu (%.1f ms)\n",
+		       (unsigned long)cls_n[0], cls_ns[0] / 1e6,
+		       (unsigned long)cls_n[1], cls_ns[1] / 1e6,
+		       (unsigned long)cls_n[2], cls_ns[2] / 1e6);
+		free(ectx.a);
+		free(ectx.idx);
+	}
 
 	{
 		uint64_t total_prefetched;
@@ -1134,6 +1271,8 @@ static int handle_faults(int uffd, int conn_fd, int tcp_fd,
 		       (unsigned long)prefetch_ctx.skipped_duplicates);
 	}
 
+	if (trace)
+		fclose(trace);
 	async_prefetch_destroy(&prefetch_ctx);
 	free(page);
 	served_state_destroy(&served);

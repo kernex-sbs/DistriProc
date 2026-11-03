@@ -1,0 +1,7 @@
+workload,mode,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms
+pytorch,lazy-stream,1,129,82,403,0,0,0,15837,15434,249
+pytorch,lazy-stream,2,131,82,514,0,0,0,15986,15472,245
+pytorch,lazy-stream,3,151,82,990,0,0,0,16460,15470,234
+pytorch,lazy-stream-all,1,187,81,184,0,0,0,78283,78103,247
+pytorch,lazy-stream-all,2,182,79,159,0,0,0,78287,78134,238
+pytorch,lazy-stream-all,3,194,83,213,0,0,0,78349,78139,240

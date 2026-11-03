@@ -1,0 +1,6 @@
+Loaded /tmp/distriproc-bench-pytorch-lazy-stream-xgQQoG/pagemap-3194590.img: pages_id=1, 80388 pages mapped
+Total pages indexed: 80388
+Page server listening on 127.0.0.1:9999
+Connected by ('127.0.0.1', 48848)
+Connected by ('127.0.0.1', 48854)
+stream congestion control: cubic

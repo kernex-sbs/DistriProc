@@ -1,0 +1,6 @@
+Loaded /tmp/distriproc-bench-pytorch-lazy-stream-all-3hBHBJ/pagemap-3448657.img: pages_id=1, 80411 pages mapped
+Total pages indexed: 80411
+Page server listening on 127.0.0.1:9999
+Connected by ('127.0.0.1', 33878)
+Connected by ('127.0.0.1', 33886)
+rest paced at 7617 Mbit/s (0.7 x delivery 10881)

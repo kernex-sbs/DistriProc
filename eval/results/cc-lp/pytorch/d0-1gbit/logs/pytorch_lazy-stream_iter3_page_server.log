@@ -1,0 +1,6 @@
+Loaded /tmp/distriproc-bench-pytorch-lazy-stream-SOUmmr/pagemap-3255911.img: pages_id=1, 80437 pages mapped
+Total pages indexed: 80437
+Page server listening on 127.0.0.1:9999
+Connected by ('127.0.0.1', 59558)
+Connected by ('127.0.0.1', 59564)
+stream congestion control: lp

@@ -116,6 +116,10 @@ handler_args_for_mode() {
         lazy-prefetch)  echo "--prefetch-seq 16 --prefetch-stride 8" ;;
         lazy-adaptive)  echo "--prefetch-seq 16 --prefetch-stride 8 --adaptive-prefetch" ;;
         lazy-hot)       echo "--prefetch-seq 16 --prefetch-stride 8" ;;
+        lazy-record)    echo "--no-prefetch" ;;
+        lazy-stream)    echo "--no-prefetch" ;;
+        lazy-stream-pf) echo "--prefetch-seq 16 --prefetch-stride 8" ;;
+        lazy-stream-all) echo "--no-prefetch" ;;
         *)              echo "ERROR: unknown mode $mode" >&2; return 1 ;;
     esac
 }
@@ -134,6 +138,20 @@ run_iteration() {
 
     log_info "[$wl_name/$mode] iteration $iter — starting workload"
 
+    # Trace modes: lazy-record logs demand-fault order to TRACE_FILE,
+    # lazy-stream streams it back. ASLR off so addresses match across runs.
+    local trace_file="${TRACE_DIR:-/tmp/distriproc-traces}/${wl_name}.trace"
+    local trace_env=""
+    WL_LAUNCH=""
+    case "$mode" in
+        lazy-record)
+            mkdir -p "$(dirname "$trace_file")"
+            trace_env="$trace_file"; WL_LAUNCH="setarch -R" ;;
+        lazy-stream*)
+            [ -s "$trace_file" ] || { log_error "no trace $trace_file (run lazy-record first)"; return 1; }
+            WL_LAUNCH="setarch -R" ;;
+    esac
+
     # 1. Start and warm up workload
     workload_start "$work_dir"
     workload_warmup
@@ -145,6 +163,7 @@ run_iteration() {
         workload_profile "$work_dir"
         hot_file_arg="--hot-pages $HOT_PAGES_FILE"
     fi
+    [ "${mode#lazy-stream}" != "$mode" ] && hot_file_arg="--hot-pages $trace_file"
 
     # 3. Checkpoint
     log_info "[$wl_name/$mode] checkpointing PID=$WORKLOAD_PID..."
@@ -193,7 +212,8 @@ run_iteration() {
         local handler_extra
         handler_extra=$(handler_args_for_mode "$mode")
         # shellcheck disable=SC2086
-        handler_pid=$(start_lazy_handler "$work_dir" "127.0.0.1" "$port" $handler_extra $hot_file_arg)
+        local rest=0; [ "$mode" = "lazy-stream-all" ] && rest=1
+        handler_pid=$(DISTRIPROC_TRACE="$trace_env" DISTRIPROC_STREAM_REST=$rest start_lazy_handler "$work_dir" "127.0.0.1" "$port" $handler_extra $hot_file_arg)
         log_info "[$wl_name/$mode] lazy handler PID=$handler_pid"
 
         RESTORE_T_START=$(time_ms)

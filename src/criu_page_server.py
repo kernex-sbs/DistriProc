@@ -14,6 +14,7 @@ Usage:
 """
 
 import argparse
+import bisect
 import glob
 import os
 import socket
@@ -105,6 +106,71 @@ def recv_exact(conn, n):
     return buf
 
 
+STREAM_MAGIC = 0xFFFFFFFFFFFFFFFF  # never a user page address
+STREAM_ALL_MAGIC = STREAM_MAGIC - 1  # same, then every other image page
+STREAM_CHUNK = 256                   # pages per sendall
+SO_MAX_PACING_RATE = getattr(socket, "SO_MAX_PACING_RATE", 47)  # Linux
+
+
+def read_page(page_map, fd_cache, page_addr):
+    if page_addr not in page_map:
+        return b"\x00" * PAGE_SIZE
+    pages_path, offset = page_map[page_addr]
+    if pages_path not in fd_cache:
+        fd_cache[pages_path] = open(pages_path, "rb")
+    return os.pread(fd_cache[pages_path].fileno(), PAGE_SIZE, offset).ljust(PAGE_SIZE, b"\x00")
+
+
+def rest_by_proximity(page_map, addrs):
+    """Image pages not in addrs, nearest to a listed page first: a heap
+    region the trace missed sits next to traced heap pages."""
+    listed = sorted(set(addrs))
+    def dist(p):
+        i = bisect.bisect_left(listed, p)
+        return min(abs(p - listed[j]) for j in (i - 1, i) if 0 <= j < len(listed))
+    seen = set(listed)
+    return sorted((p for p in page_map if p not in seen), key=dist) if listed else sorted(page_map)
+
+
+def send_pages(conn, page_map, fd_cache, addrs):
+    for i in range(0, len(addrs), STREAM_CHUNK):
+        conn.sendall(b"".join(read_page(page_map, fd_cache, a & ~(PAGE_SIZE - 1))
+                              for a in addrs[i:i + STREAM_CHUNK]))
+
+
+def stream_pages(conn, page_map, fd_cache, rest):
+    """Server push: after STREAM_MAGIC the client sends u64 count and count
+    addresses; reply with the pages back to back, in that order. With rest
+    (STREAM_ALL_MAGIC), follow with u64 m, m addresses, and their pages."""
+    # DISTRIPROC_STREAM_CC (e.g. vegas, lp, bbr): congestion control for the
+    # stream only, so it keeps the bottleneck queue short for demand replies.
+    cc = os.environ.get("DISTRIPROC_STREAM_CC")
+    if cc:
+        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION, cc.encode())
+        print(f"stream congestion control: {cc}", flush=True)
+    (count,) = struct.unpack("Q", recv_exact(conn, 8))
+    addrs = struct.unpack(f"{count}Q", recv_exact(conn, 8 * count))
+    order = []
+    t = threading.Thread(target=lambda: order.extend(rest_by_proximity(page_map, addrs)))
+    if rest:
+        t.start()  # ponytail: overlaps the trace send; GIL makes it ~60 ms of contention
+    send_pages(conn, page_map, fd_cache, addrs)
+    if rest:
+        # DISTRIPROC_STREAM_PACE=f: pace the rest at f x the delivery rate the
+        # trace phase measured, so it never builds a queue at the bottleneck
+        # and demand replies pass at ~1 RTT.
+        pace = float(os.environ.get("DISTRIPROC_STREAM_PACE", "0"))
+        if pace > 0:
+            info = conn.getsockopt(socket.IPPROTO_TCP, socket.TCP_INFO, 232)
+            (rate,) = struct.unpack_from("Q", info, 160)  # tcpi_delivery_rate, B/s
+            conn.setsockopt(socket.SOL_SOCKET, SO_MAX_PACING_RATE, int(rate * pace))
+            print(f"rest paced at {rate * pace * 8 / 1e6:.0f} Mbit/s "
+                  f"({pace} x delivery {rate * 8 / 1e6:.0f})", flush=True)
+        t.join()
+        conn.sendall(struct.pack(f"Q{len(order)}Q", len(order), *order))
+        send_pages(conn, page_map, fd_cache, order)
+
+
 def handle_client(conn, addr, page_map, fd_cache):
     """Handle a single client connection with pipelined request support."""
     print(f"Connected by {addr}")
@@ -115,6 +181,9 @@ def handle_client(conn, addr, page_map, fd_cache):
                 break
 
             fault_addr = struct.unpack("Q", data)[0]
+            if fault_addr in (STREAM_MAGIC, STREAM_ALL_MAGIC):
+                stream_pages(conn, page_map, fd_cache, fault_addr == STREAM_ALL_MAGIC)
+                continue
             # Align to page boundary
             page_addr = fault_addr & ~(PAGE_SIZE - 1)
 

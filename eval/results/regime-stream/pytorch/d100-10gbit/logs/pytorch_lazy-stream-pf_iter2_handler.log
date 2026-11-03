@@ -1,0 +1,32 @@
+Config: prefetch=on adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=/home/utkarsh/Work/proc/distriProc/eval/results/regime-stream/pytorch/trace-a/pytorch.trace
+Listening on /tmp/distriproc-bench-pytorch-lazy-stream-pf-g764L0/lazy-pages.socket
+Connected to page server at 127.0.0.1:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 3060313
+Received userfaultfd: 3
+Started async prefetch thread
+Async prefetch: connected to page server
+Started eager fetch thread
+Handling page faults...
+Eager fetch: streaming 15400 pages
+Fault 1: 0x7fff9fcc3000 (prefetched 0)
+Fault 2: 0x7fff9f4c2000 (prefetched 0)
+Fault 3: 0x7fff9ecc1000 (prefetched 0)
+Fault 4: 0x7fff9e4c0000 (prefetched 0)
+Fault 5: 0x7fff9dcbf000 (prefetched 0)
+Fault 6: 0x7fff9d4be000 (prefetched 0)
+Fault 7: 0x7fff9ccbd000 (prefetched 0)
+Restore finished (magic received)
+Fault 8: 0x7ffff6f10000 (prefetched 14)
+Fault 9: 0x55555cf97000 (prefetched 0)
+Fault 10: 0x7fffa2744000 (prefetched 15)
+Eager fetch: streamed in 61 ms (251616 pages/s)
+Eager fetch: installed 15381 hot pages
+Fault 100: 0x7fffb50f4000 (prefetched 0)
+Fault 200: 0x55555593f000 (prefetched 12)
+Enqueue: 195 calls, 0.1 ms on fault path, mean depth 2, dedup=linear
+Stream faults: landed 7 (9.9 ms), ahead 2 (3.3 ms), miss 205 (72.6 ms)
+Prefetch stats: 214 faults, 2093 prefetched, 0 hits (0% hit rate)
+Total pages served: 17621
+Prefetch duplicates skipped: 72

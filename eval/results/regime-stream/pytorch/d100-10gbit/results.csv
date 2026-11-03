@@ -1,0 +1,16 @@
+workload,mode,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms
+pytorch,lazy-stream,1,188,68,333,0,0,0,15732,15399,230
+pytorch,lazy-stream,2,227,77,471,0,0,0,15864,15393,237
+pytorch,lazy-stream,3,228,60,442,0,0,0,15826,15384,232
+pytorch,lazy-stream,4,211,57,404,0,0,0,15797,15393,247
+pytorch,lazy-stream,5,159,73,187,0,0,0,15553,15366,268
+pytorch,lazy-stream-pf,1,170,79,269,2579,0,0,18145,15385,259
+pytorch,lazy-stream-pf,2,159,78,214,2093,0,0,17621,15381,247
+pytorch,lazy-stream-pf,3,154,79,201,2089,0,0,17610,15389,248
+pytorch,lazy-stream-pf,4,177,78,259,2418,0,0,17982,15386,253
+pytorch,lazy-stream-pf,5,163,79,216,2069,0,0,17594,15377,248
+pytorch,lazy-stream-all,1,343,77,209,0,1,0,78951,78799,252
+pytorch,lazy-stream-all,2,220,73,92,0,0,0,78312,78230,256
+pytorch,lazy-stream-all,3,327,77,168,0,0,0,78956,78835,243
+pytorch,lazy-stream-all,4,236,76,122,0,0,0,78336,78219,243
+pytorch,lazy-stream-all,5,243,71,118,0,0,0,78336,78221,274

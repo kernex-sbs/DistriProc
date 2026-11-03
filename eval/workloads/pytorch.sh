@@ -34,7 +34,8 @@ workload_start() {
 
     rm -f "$_PT_READY_FILE" "$_PT_TRIGGER_FILE" "$_PT_RESULT_FILE"
 
-    setsid python3 "$_PT_SCRIPT" \
+    # shellcheck disable=SC2086  # WL_LAUNCH: optional prefix, e.g. "setarch -R"
+    setsid ${WL_LAUNCH:-} python3 "$_PT_SCRIPT" \
         --ready-file "$_PT_READY_FILE" \
         --trigger-file "$_PT_TRIGGER_FILE" \
         --result-file "$_PT_RESULT_FILE" \
