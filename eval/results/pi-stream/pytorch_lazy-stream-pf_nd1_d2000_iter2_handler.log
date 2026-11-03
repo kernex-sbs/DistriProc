@@ -1,0 +1,42 @@
+Config: prefetch=on adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=/home/utkarsh/DistriProc/eval/results/pi-stream/trace-a.trace
+Listening on /tmp/distriproc-2m-lazy-stream-pf-FFzNqY/lazy-pages.socket
+Connected to page server at 10.42.0.2:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 116947
+Received userfaultfd: 3
+Started async prefetch thread
+Async prefetch: connected to page server
+Started eager fetch thread
+Handling page faults...
+Eager fetch: streaming 14778 pages
+Fault 1: 0x7ff7ff3000 (prefetched 0)
+Fault 2: 0x7fd5c6f000 (prefetched 0)
+Fault 3: 0x7fd545f000 (prefetched 0)
+Fault 4: 0x7fd4c4f000 (prefetched 0)
+Fault 5: 0x7f8bfff000 (prefetched 0)
+Fault 6: 0x7f8b7ef000 (prefetched 0)
+Restore finished (magic received)
+Fault 7: 0x779e000 (prefetched 16)
+Fault 8: 0xb88000 (prefetched 15)
+Fault 9: 0x7fcc518000 (prefetched 13)
+Fault 10: 0x7fcc2e8000 (prefetched 16)
+Fault 100: 0x773c000 (prefetched 9)
+userfaultfd event: REMOVE 0x7f8f610000-0x7f8f710000
+userfaultfd event: REMOVE 0x7f8fa90000-0x7f90000000
+Eager fetch: streamed in 602 ms (24556 pages/s)
+Eager fetch: installed 14725 hot pages
+userfaultfd event: REMOVE 0x7f90000000-0x7f92000000
+userfaultfd event: REMOVE 0x7f8dfc0000-0x7f8e000000
+Fault 1300: 0x7b64000 (prefetched 0)
+userfaultfd event: REMOVE 0x7f8f650000-0x7f8f680000
+userfaultfd event: REMOVE 0x7f8f6f0000-0x7f8f970000
+userfaultfd event: REMOVE 0x7f8f9b0000-0x7f90000000
+userfaultfd event: REMOVE 0x7f8dfc0000-0x7f8e000000
+userfaultfd event: REMOVE 0x7f8dfe0000-0x7f8e000000
+userfaultfd event: REMOVE 0x7f8f610000-0x7f90000000
+Enqueue: 269 calls, 0.5 ms on fault path, mean depth 3, dedup=linear
+Stream faults: landed 0 (0.0 ms), ahead 13 (36.9 ms), miss 298 (854.1 ms)
+Prefetch stats: 5492 faults, 3076 prefetched, 2687 hits (48% hit rate)
+Total pages served: 20578
+Prefetch duplicates skipped: 59

@@ -1,0 +1,65 @@
+Config: prefetch=on adaptive=on seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=(none)
+Listening on /tmp/distriproc-2m-lazy-adaptive-gyKtlb/lazy-pages.socket
+Connected to page server at 10.42.0.2:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 110729
+Received userfaultfd: 3
+Started async prefetch thread
+Handling page faults...
+Async prefetch: connected to page server
+Fault 1: 0x7f899d3000 (prefetched 16)
+Fault 2: 0x7f6764f000 (prefetched 16)
+Fault 3: 0x7f66e3f000 (prefetched 16)
+Fault 4: 0x7f6662f000 (prefetched 16)
+Fault 5: 0x7f5dacf000 (prefetched 16)
+Fault 6: 0x7f5d2bf000 (prefetched 16)
+Fault 7: 0x7f5caaf000 (prefetched 16)
+Restore finished (magic received)
+Fault 8: 0x7fd257b000 (prefetched 16)
+Fault 9: 0x7f70e3d000 (prefetched 16)
+Fault 10: 0x24fe1000 (prefetched 16)
+Fault 100: 0x7f5dfe1000 (prefetched 16)
+Fault 200: 0x7f8893f000 (prefetched 16)
+Fault 300: 0x24f83000 (prefetched 2)
+Fault 400: 0x211ab000 (prefetched 16)
+Fault 500: 0x7f1f957000 (prefetched 4)
+userfaultfd event: REMOVE 0x7f1f610000-0x7f1f710000
+userfaultfd event: REMOVE 0x7f1fa90000-0x7f20000000
+Fault 1300: 0x7f20002000 (prefetched 15)
+Fault 1400: 0x7f6458b000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f20000000-0x7f22000000
+Fault 1700: 0x7f64896000 (prefetched 16)
+Fault 1800: 0x7f88932000 (prefetched 4)
+Fault 1900: 0x7f1c3cd000 (prefetched 6)
+userfaultfd event: REMOVE 0x7f1f6f0000-0x7f20000000
+Fault 2300: 0x7f1c86c000 (prefetched 16)
+Fault 2600: 0x7f1c946000 (prefetched 16)
+Policy: faults=149 hits=135 prefetched=89 drops=0 dup=0 dup_rate=0% qdepth=16 => prefetch=on seq 16->18 stride 8->9
+userfaultfd event: REMOVE 0x7f1dfc0000-0x7f1e000000
+Fault 2800: 0x7f1cb7e000 (prefetched 18)
+Fault 3200: 0x7f1d26e000 (prefetched 18)
+userfaultfd event: REMOVE 0x7f1dfc0000-0x7f1e000000
+Fault 4900: 0x7f1d7f8000 (prefetched 16)
+Fault 6000: 0x7f1dd58000 (prefetched 18)
+Fault 6300: 0x7f1db5c000 (prefetched 3)
+userfaultfd event: REMOVE 0x7f1dfe0000-0x7f1e000000
+Fault 6400: 0x7f1e4bf000 (prefetched 1)
+Fault 6500: 0x7f1e824000 (prefetched 18)
+Fault 6600: 0x7f1e455000 (prefetched 18)
+userfaultfd event: REMOVE 0x7f20000000-0x7f22000000
+Fault 6800: 0x7f1f102000 (prefetched 18)
+Fault 7500: 0x7f1ead6000 (prefetched 18)
+Policy: faults=131 hits=124 prefetched=73 drops=0 dup=0 dup_rate=0% qdepth=36 => prefetch=on seq 18->20 stride 9->10
+Fault 9100: 0x7f1ee70000 (prefetched 20)
+userfaultfd event: REMOVE 0x7f1dfe0000-0x7f1e000000
+Policy: faults=128 hits=117 prefetched=13 drops=0 dup=0 dup_rate=0% qdepth=20 => prefetch=on seq 20->22 stride 10->11
+userfaultfd event: REMOVE 0x7f1f610000-0x7f20000000
+Fault 9300: 0x7f645a3000 (prefetched 7)
+Fault 9700: 0x7f1f5df000 (prefetched 22)
+Fault 9800: 0x7f1f5f7000 (prefetched 22)
+Fault 9900: 0x7f8937c000 (prefetched 21)
+Enqueue: 2278 calls, 5.1 ms on fault path, mean depth 14, dedup=linear
+Prefetch stats: 9926 faults, 20383 prefetched, 5090 hits (51% hit rate)
+Total pages served: 23843
+Prefetch duplicates skipped: 4704

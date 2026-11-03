@@ -1,0 +1,54 @@
+Config: prefetch=on adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=(none)
+Listening on /tmp/distriproc-2m-lazy-prefetch-H97OTC/lazy-pages.socket
+Connected to page server at 10.42.0.2:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 110406
+Received userfaultfd: 3
+Started async prefetch thread
+Handling page faults...
+Async prefetch: connected to page server
+Fault 1: 0x7fa701b000 (prefetched 16)
+Fault 2: 0x7f84c4f000 (prefetched 16)
+Fault 3: 0x7f8443f000 (prefetched 16)
+Fault 4: 0x7f7b0ef000 (prefetched 16)
+Fault 5: 0x7f7a8df000 (prefetched 16)
+Fault 6: 0x7f39fff000 (prefetched 16)
+Fault 7: 0x7f83c2f000 (prefetched 16)
+Restore finished (magic received)
+Fault 8: 0x7fdf960000 (prefetched 16)
+Fault 9: 0x7f8e43d000 (prefetched 16)
+Fault 10: 0x33b60000 (prefetched 16)
+Fault 100: 0x7f81d9b000 (prefetched 5)
+Fault 200: 0x33bbc000 (prefetched 16)
+Fault 300: 0x2d1c9000 (prefetched 0)
+Fault 400: 0x7f3d7e6000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f3d610000-0x7f3d710000
+userfaultfd event: REMOVE 0x7f3da90000-0x7f3e000000
+Fault 1300: 0x7f3e1bb000 (prefetched 16)
+Fault 1400: 0x7fa645c000 (prefetched 5)
+userfaultfd event: REMOVE 0x7f3e000000-0x7f40000000
+Fault 1700: 0x3134c000 (prefetched 16)
+Fault 1800: 0x7f7ce1f000 (prefetched 16)
+Fault 1900: 0x7f3a372000 (prefetched 1)
+userfaultfd event: REMOVE 0x7f3d6f0000-0x7f3e000000
+userfaultfd event: REMOVE 0x7f3bfc0000-0x7f3c000000
+Fault 2800: 0x7f3aa78000 (prefetched 16)
+Fault 3100: 0x7f3b01b000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f3bfc0000-0x7f3c000000
+Fault 3900: 0x7f3b951000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f3bfe0000-0x7f3c000000
+Fault 6400: 0x7f3c4e5000 (prefetched 16)
+Fault 6500: 0x7f3c5bd000 (prefetched 16)
+Fault 6600: 0x7f3c48b000 (prefetched 4)
+userfaultfd event: REMOVE 0x7f3e000000-0x7f40000000
+Fault 8700: 0x7f3ce22000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f3bfe0000-0x7f3c000000
+userfaultfd event: REMOVE 0x7f3d610000-0x7f3e000000
+Fault 9300: 0x2d431000 (prefetched 9)
+Fault 9800: 0x7f3d47c000 (prefetched 16)
+Fault 9900: 0x7fa684a000 (prefetched 1)
+Enqueue: 2214 calls, 4.5 ms on fault path, mean depth 12, dedup=linear
+Prefetch stats: 9932 faults, 20120 prefetched, 5106 hits (51% hit rate)
+Total pages served: 23741
+Prefetch duplicates skipped: 1875

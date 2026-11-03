@@ -1,0 +1,59 @@
+Config: prefetch=on adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=(none)
+Listening on /tmp/distriproc-2m-lazy-prefetch-SafvFp/lazy-pages.socket
+Connected to page server at 10.42.0.2:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 114707
+Received userfaultfd: 3
+Started async prefetch thread
+Handling page faults...
+Async prefetch: connected to page server
+Fault 1: 0x7fbc4fa000 (prefetched 16)
+Fault 2: 0x7f9a12f000 (prefetched 16)
+Fault 3: 0x7f9991f000 (prefetched 16)
+Fault 4: 0x7f9910f000 (prefetched 16)
+Fault 5: 0x7f4ffff000 (prefetched 16)
+Fault 6: 0x7f4f7ef000 (prefetched 16)
+Fault 7: 0x7f4efdf000 (prefetched 16)
+Restore finished (magic received)
+Fault 8: 0x7feab85000 (prefetched 16)
+Fault 9: 0x7fa391d000 (prefetched 16)
+Fault 10: 0x149ca000 (prefetched 16)
+Fault 100: 0x7fbb55b000 (prefetched 16)
+Fault 200: 0x114a1000 (prefetched 16)
+Fault 300: 0x1475a000 (prefetched 0)
+Fault 400: 0x7f5398f000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f53610000-0x7f53710000
+userfaultfd event: REMOVE 0x7f53a90000-0x7f54000000
+Fault 1300: 0x7f54319000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f54000000-0x7f56000000
+userfaultfd event: REMOVE 0x7f53a90000-0x7f54000000
+userfaultfd event: REMOVE 0x7f51fc0000-0x7f52000000
+Fault 1700: 0x14ab1000 (prefetched 0)
+userfaultfd event: REMOVE 0x7f51fc0000-0x7f52000000
+Fault 2200: 0x7f50223000 (prefetched 0)
+userfaultfd event: REMOVE 0x7f53710000-0x7f53760000
+userfaultfd event: REMOVE 0x7f537d0000-0x7f53a90000
+userfaultfd event: REMOVE 0x7f53b90000-0x7f54000000
+userfaultfd event: REMOVE 0x7f536f0000-0x7f54000000
+userfaultfd event: REMOVE 0x7f51fc0000-0x7f52000000
+Fault 3800: 0x7f50cc2000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f51fc0000-0x7f52000000
+Fault 4400: 0x7f51390000 (prefetched 16)
+Fault 4500: 0x7f513c4000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f51fe0000-0x7f52000000
+userfaultfd event: REMOVE 0x7f51fc0000-0x7f52000000
+Fault 7400: 0x7f52790000 (prefetched 0)
+Fault 7500: 0x7f523e8000 (prefetched 0)
+userfaultfd event: REMOVE 0x7f54000000-0x7f56000000
+Fault 9400: 0x7f52dec000 (prefetched 16)
+Fault 9700: 0x7f53074000 (prefetched 16)
+Fault 9800: 0x7f52e47000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f51fe0000-0x7f52000000
+Fault 10200: 0x11652000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f53610000-0x7f54000000
+Fault 10500: 0x7f53446000 (prefetched 16)
+Enqueue: 1915 calls, 4.1 ms on fault path, mean depth 1, dedup=linear
+Prefetch stats: 10856 faults, 19913 prefetched, 6259 hits (57% hit rate)
+Total pages served: 23634
+Prefetch duplicates skipped: 386

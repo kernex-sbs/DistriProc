@@ -1,0 +1,65 @@
+Config: prefetch=on adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=(none)
+Listening on /tmp/distriproc-2m-lazy-prefetch-cX73wI/lazy-pages.socket
+Connected to page server at 10.42.0.2:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 106536
+Received userfaultfd: 3
+Started async prefetch thread
+Handling page faults...
+Async prefetch: connected to page server
+Fault 1: 0x7f82f90000 (prefetched 16)
+Fault 2: 0x7f60c0f000 (prefetched 16)
+Fault 3: 0x7f603ff000 (prefetched 16)
+Fault 4: 0x7f5fbef000 (prefetched 16)
+Fault 5: 0x7f5708f000 (prefetched 16)
+Fault 6: 0x7f5687f000 (prefetched 16)
+Fault 7: 0x7f15fff000 (prefetched 16)
+Restore finished (magic received)
+Fault 8: 0x7f6a3fd000 (prefetched 16)
+Fault 9: 0x7fc5c3a000 (prefetched 16)
+Fault 10: 0x2a006000 (prefetched 16)
+Fault 100: 0x7f82027000 (prefetched 16)
+Fault 200: 0x29fd7000 (prefetched 16)
+Fault 300: 0x2a5bb000 (prefetched 3)
+Fault 400: 0x7f1996d000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f19610000-0x7f19710000
+userfaultfd event: REMOVE 0x7f19a90000-0x7f1a000000
+Fault 1300: 0x7f1a0b6000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f1a000000-0x7f1c000000
+userfaultfd event: REMOVE 0x7f19a90000-0x7f1a000000
+userfaultfd event: REMOVE 0x7f17fc0000-0x7f18000000
+userfaultfd event: REMOVE 0x7f19610000-0x7f19710000
+userfaultfd event: REMOVE 0x7f19810000-0x7f19990000
+Fault 1700: 0x28d1d000 (prefetched 16)
+Fault 2100: 0x2a08a000 (prefetched 6)
+userfaultfd event: REMOVE 0x7f17fc0000-0x7f18000000
+Fault 2600: 0x7f16211000 (prefetched 0)
+Fault 2900: 0x7f16642000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f196f0000-0x7f1a000000
+userfaultfd event: REMOVE 0x7f17fc0000-0x7f18000000
+userfaultfd event: REMOVE 0x7f19610000-0x7f19680000
+userfaultfd event: REMOVE 0x7f196f0000-0x7f1a000000
+Fault 3400: 0x7f1690c000 (prefetched 16)
+Fault 3700: 0x7f16794000 (prefetched 11)
+Fault 3800: 0x7f16550000 (prefetched 14)
+Fault 3900: 0x7f16d99000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f17fc0000-0x7f18000000
+Fault 4100: 0x7f16fc2000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f19610000-0x7f196f0000
+userfaultfd event: REMOVE 0x7f19730000-0x7f1a000000
+Fault 5300: 0x7f1776f000 (prefetched 16)
+Fault 6900: 0x7f17d56000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f17fe0000-0x7f18000000
+userfaultfd event: REMOVE 0x7f17fc0000-0x7f18000000
+Fault 7700: 0x7f18550000 (prefetched 0)
+Fault 7800: 0x7f1863b000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f1a000000-0x7f1c000000
+Fault 9100: 0x7f18f9c000 (prefetched 16)
+userfaultfd event: REMOVE 0x7f17fe0000-0x7f18000000
+Fault 10500: 0x234fc000 (prefetched 14)
+userfaultfd event: REMOVE 0x7f19610000-0x7f1a000000
+Enqueue: 1926 calls, 3.7 ms on fault path, mean depth 1, dedup=linear
+Prefetch stats: 11169 faults, 19950 prefetched, 6563 hits (58% hit rate)
+Total pages served: 23653
+Prefetch duplicates skipped: 190

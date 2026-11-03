@@ -35,6 +35,14 @@
 #   NODELAY_ARMS      TCP_NODELAY arms, interleaved per iteration (default: "0 1";
 #                     0 = original Nagle-on transport, 1 = fixed)
 #   OUT_DIR           results dir                 (default: eval/results/crosshost-2machine)
+#   DELAYS_US         extra one-way delay on A's IFACE egress (requests, ACKs),
+#                     interleaved per iteration   (default: "0"). B's egress,
+#                     the data bottleneck, keeps its own qdisc.
+#   IFACE             A's interface to B          (default: eth0)
+#
+# Extra modes: full (local images), full-net (stream images B->A, then full
+# restore), lazy-stream / -pf / -all (stream a demand-fault trace recorded
+# twice at delay 0 before the loop; trace-a is used, trace-b checks stability).
 
 set -euo pipefail
 
@@ -74,9 +82,12 @@ ITERS="${ITERS:-10}"
 MODES="${MODES:-lazy lazy-prefetch lazy-adaptive}"
 NODELAY_ARMS="${NODELAY_ARMS:-0 1}"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/eval/results/crosshost-2machine}"
+DELAYS_US="${DELAYS_US:-0}"
+IFACE="${IFACE:-eth0}"
 mkdir -p "$OUT_DIR"
 CSV="$OUT_DIR/results.csv"
-echo "workload,mode,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms,rtt_us,tcp_nodelay" > "$CSV"
+TRACE="$OUT_DIR/trace-a.trace"
+echo "workload,mode,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms,rtt_us,tcp_nodelay,delay_us" > "$CSV"
 
 REMOTE_PS="$REMOTE_ROOT/src/criu_page_server.py"
 REMOTE_PID_FILE="$REMOTE_WORK/page_server.pid"
@@ -86,6 +97,9 @@ handler_args() {  # mode -> lazy_handler flags
         lazy)          echo "--no-prefetch" ;;
         lazy-prefetch) echo "--prefetch-seq 16 --prefetch-stride 8" ;;
         lazy-adaptive) echo "--prefetch-seq 16 --prefetch-stride 8 --adaptive-prefetch" ;;
+        lazy-record)   echo "--no-prefetch" ;;
+        lazy-stream|lazy-stream-all) echo "--no-prefetch --hot-pages $TRACE" ;;
+        lazy-stream-pf) echo "--prefetch-seq 16 --prefetch-stride 8 --hot-pages $TRACE" ;;
         *) echo "ERROR: unknown mode $1" >&2; return 1 ;;
     esac
 }
@@ -96,7 +110,11 @@ stop_remote_server() {
     # garbage, crashing the next restore. Belt and suspenders.
     ssh "$PAGE_SERVER_SSH" "test -f '$REMOTE_PID_FILE' && kill \$(cat '$REMOTE_PID_FILE') 2>/dev/null; pkill -f 'criu_page_server.py.*--port $PORT' 2>/dev/null; rm -f '$REMOTE_PID_FILE'" 2>/dev/null || true
 }
-cleanup() { cleanup_pids; stop_remote_server; }
+set_delay() {  # one-way delay on A's egress; 0 restores the default qdisc
+    if [ "$1" -eq 0 ]; then tc qdisc replace dev "$IFACE" root fq_codel
+    else tc qdisc replace dev "$IFACE" root netem delay "${1}us" limit 100000; fi
+}
+cleanup() { cleanup_pids; stop_remote_server; set_delay 0 2>/dev/null || true; }
 trap cleanup EXIT INT TERM
 
 # ── Preflight ─────────────────────────────────────────────────────────────────
@@ -145,67 +163,114 @@ start_remote_server() {  # $1=local image dir
     return 1
 }
 
-# ── Main loop ─────────────────────────────────────────────────────────────────
-for iter in $(seq 1 "$ITERS"); do
-  for mode in $MODES; do
-   for nd in $NODELAY_ARMS; do
-    export DISTRIPROC_TCP_NODELAY="$nd"   # handler inherits; ssh passes it to B
-    work_dir=$(mktemp -d "/tmp/distriproc-2m-${mode}-XXXXXX")
-    log_info "[pytorch/$mode/nd$nd] iter $iter"
+start_remote_xfer() {  # serve B's copy of the images on PORT+1 (one client)
+    ssh "$PAGE_SERVER_SSH" "rm -f /tmp/distriproc-xfer.log"  # no stale "ready"
+    ssh "$PAGE_SERVER_SSH" "cd '$REMOTE_ROOT' && nohup python3 -u eval/xfer_images.py serve '$REMOTE_WORK' $((PORT + 1)) > /tmp/distriproc-xfer.log 2>&1 &" >/dev/null 2>&1 &
+    for _ in $(seq 50); do
+        ssh "$PAGE_SERVER_SSH" "grep -q ready /tmp/distriproc-xfer.log" 2>/dev/null && return 0
+        sleep 0.2
+    done
+    log_error "remote xfer server never became ready"; return 1
+}
 
+run_one() {  # $1=mode $2=iteration $3=delay_us; env DISTRIPROC_TCP_NODELAY
+    local mode="$1" iter="$2" delay="$3" nd="$DISTRIPROC_TCP_NODELAY"
+    local tag="${mode}_nd${nd}_d${delay}_iter${iter}"
+    local work_dir handler_pid="" restored_pid="" stats="-1,-1,-1,-1,-1,0"
+    work_dir=$(mktemp -d "/tmp/distriproc-2m-${mode}-XXXXXX")
+    log_info "[pytorch/$mode/nd$nd/d$delay] iter $iter"
+
+    WL_LAUNCH=""
+    case "$mode" in lazy-record|lazy-stream*) WL_LAUNCH="setarch -R" ;; esac
     workload_start "$work_dir"
     workload_warmup
-    dump_pid="$WORKLOAD_PID"
+    local dump_pid="$WORKLOAD_PID"
     checkpoint_ms=$(criu_dump "$WORKLOAD_PID" "$work_dir")
     wait "$dump_pid" 2>/dev/null || true
     WORKLOAD_PID=""
 
-    if ! start_remote_server "$work_dir"; then
-        log_error "[pytorch/$mode/nd$nd] iter $iter: skipping (server failed)"
-        rm -rf "$work_dir"; stop_remote_server; continue
+    if [ "$mode" = "full" ]; then
+        RESTORE_T_START=$(time_ms)
+        restored_pid=$(criu_restore_full "$work_dir")
+    else
+        if ! start_remote_server "$work_dir"; then
+            log_error "[pytorch/$mode] iter $iter: skipping (server failed)"
+            rm -rf "$work_dir"; stop_remote_server; return 0
+        fi
+        if [ "$mode" = "full-net" ]; then
+            start_remote_xfer || { rm -rf "$work_dir"; stop_remote_server; return 0; }
+            RESTORE_T_START=$(time_ms)
+            python3 "$SCRIPT_DIR/xfer_images.py" recv "$PAGE_SERVER_HOST" $((PORT + 1)) "$work_dir/net-images"
+            restored_pid=$(criu_restore_full "$work_dir/net-images")
+            cp "$work_dir/net-images/restore.log" "$work_dir/" 2>/dev/null || true
+        else
+            local args rest=0 trace_env=""
+            args=$(handler_args "$mode")
+            [ "$mode" = "lazy-stream-all" ] && rest=1
+            [ "$mode" = "lazy-record" ] && trace_env="$RECORD_TO"
+            # shellcheck disable=SC2086
+            handler_pid=$(DISTRIPROC_TRACE="$trace_env" DISTRIPROC_STREAM_REST=$rest \
+                start_lazy_handler "$work_dir" "$PAGE_SERVER_HOST" "$PORT" $args)
+            RESTORE_T_START=$(time_ms)
+            restored_pid=$(criu_restore_lazy "$work_dir")
+        fi
     fi
 
-    args=$(handler_args "$mode")
-    # shellcheck disable=SC2086
-    handler_pid=$(start_lazy_handler "$work_dir" "$PAGE_SERVER_HOST" "$PORT" $args)
-
-    RESTORE_T_START=$(time_ms)
-    restored_pid=$(criu_restore_lazy "$work_dir")
-
-    TTFR_MS=0; workload_ttfr_probe "$work_dir" || true; ttfr_ms="$TTFR_MS"
+    TTFR_MS=0; workload_ttfr_probe "$work_dir" || true; local ttfr_ms="$TTFR_MS"
     if [ "$ttfr_ms" = "-1" ]; then
-        alive=$(kill -0 "$restored_pid" 2>/dev/null && echo yes || echo no)
-        log_warn "[pytorch/$mode/nd$nd] iter $iter probe FAILED: restored pid=$restored_pid alive=$alive"
-        log_warn "--- workload.log tail ---"; tail -20 "$work_dir/workload.log" >&2 2>/dev/null || true
-        log_warn "--- restore.log tail ---"; tail -15 "$work_dir/restore.log" >&2 2>/dev/null || true
-        log_warn "--- remote page_server.log tail ---"
-        ssh "$PAGE_SERVER_SSH" "tail -15 '$REMOTE_WORK/page_server.log'" 2>/dev/null >&2 || true
+        log_warn "[pytorch/$mode] iter $iter probe FAILED: restored pid=$restored_pid"
+        tail -15 "$work_dir/restore.log" >&2 2>/dev/null || true
     fi
-    THROUGHPUT=0; workload_throughput || true; throughput="$THROUGHPUT"
-    log_info "[pytorch/$mode/nd$nd] iter $iter TTFR=${ttfr_ms}ms"
-
-    # Preserve all logs for diagnosis (not just handler.log).
-    for lg in workload restore handler page_server; do
-        cp "$work_dir/$lg.log" "$OUT_DIR/pytorch_${mode}_nd${nd}_iter${iter}_${lg}.log" 2>/dev/null || true
-    done
+    THROUGHPUT=0; workload_throughput || true
+    log_info "[pytorch/$mode/nd$nd/d$delay] iter $iter TTFR=${ttfr_ms}ms"
 
     [ -n "$restored_pid" ] && kill -9 "$restored_pid" 2>/dev/null || true
-    if [ -n "${handler_pid:-}" ]; then
+    if [ -n "$handler_pid" ]; then
         kill "$handler_pid" 2>/dev/null || true
         # The handler polls for SIGTERM about once a second; 1 s was too
         # short and its stats were lost (recorded as -1).
         for _ in $(seq 25); do kill -0 "$handler_pid" 2>/dev/null || break; sleep 0.2; done
         kill -9 "$handler_pid" 2>/dev/null || true; sleep 0.2
+        stats=$(parse_handler_stats "$work_dir/handler.log")
     fi
-    stats=$(parse_handler_stats "$work_dir/handler.log")
+    ssh "$PAGE_SERVER_SSH" "cat '$REMOTE_WORK/page_server.log'" > "$work_dir/page_server.log" 2>/dev/null || true
     stop_remote_server
+    for lg in handler page_server; do
+        cp "$work_dir/$lg.log" "$OUT_DIR/pytorch_${tag}_${lg}.log" 2>/dev/null || true
+    done
 
-    csv_append "$CSV" "pytorch,${mode},${iter},${ttfr_ms},${throughput},${stats},${checkpoint_ms},${RTT_US},${nd}"
+    csv_append "$CSV" "pytorch,${mode},${iter},${ttfr_ms},${THROUGHPUT},${stats},${checkpoint_ms},$((RTT_US + delay)),${nd},${delay}"
     workload_cleanup
     rm -rf "$work_dir"
-   done
+}
+
+# ── Trace (once, at delay 0) ──────────────────────────────────────────────────
+if [[ " $MODES " == *" lazy-stream"* ]]; then
+    set_delay 0
+    export DISTRIPROC_TCP_NODELAY=1
+    for t in a b; do RECORD_TO="$OUT_DIR/trace-$t.trace" run_one lazy-record "rec-$t" 0; done
+    python3 - "$OUT_DIR/trace-a.trace" "$OUT_DIR/trace-b.trace" <<'PY'
+import sys
+a, b = (open(p, "rb").read() for p in sys.argv[1:])
+a, b = ([x[i:i+8] for i in range(0, len(x), 8)] for x in (a, b))
+print(f"trace: a={len(a)} b={len(b)} pages, {len(set(a) & set(b)) / len(set(a)):.1%} of a also in b")
+PY
+fi
+
+# ── Main loop ─────────────────────────────────────────────────────────────────
+for iter in $(seq 1 "$ITERS"); do
+  for delay in $DELAYS_US; do
+    set_delay "$delay"
+    for mode in $MODES; do
+      # Demand-only lazy pays ~1 RTT per page: skip it once delay is added.
+      [ "$mode" = "lazy" ] && [ "$delay" -gt 0 ] && continue
+      for nd in $NODELAY_ARMS; do
+        export DISTRIPROC_TCP_NODELAY="$nd"   # handler inherits; ssh passes it to B
+        run_one "$mode" "$iter" "$delay"
+      done
+    done
   done
 done
+set_delay 0
 
-log_info "Done. Results: $CSV  (LAN RTT ${RTT_US} us, n=${ITERS}/mode)"
-log_info "Compare these TTFRs to the netem prediction at ~${RTT_US} us in Table tab:crosshost."
+log_info "Done. Results: $CSV  (base LAN RTT ${RTT_US} us + delay_us, n=${ITERS}/mode)"
