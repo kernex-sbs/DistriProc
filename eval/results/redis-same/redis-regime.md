@@ -1,7 +1,9 @@
 # Redis regime map + same-image traces: x86 loopback + netem, 2026-11-04
 
 Cells, modes and harness as in `regime-stream/pytorch-stream.md`.
-Workload: Redis, 200k keys, probe of 20k fixed keys as MGET batches of 100
+Workload: the `redis` workload, 200k keys. On this laptop `redis-server`
+is **Valkey 9.1.2** (Arch ships Valkey under that name); the Pi runs
+Redis 8.0.2. Probe: 20k fixed keys as MGET batches of 100
 over a unix socket (so probe traffic is not shaped on `lo`).
 No throughput phase. 5 iterations, median TTFR in ms.
 
@@ -40,8 +42,36 @@ No throughput phase. 5 iterations, median TTFR in ms.
 3. **The cost moves to the record pass.** It is a plain lazy restore with
    tracing: about 65 s at 2 ms RTT. stream-same is an upper bound for a
    second restore of the same image, not a first-restore number.
-4. **Overlap is environment-dependent.** The same workload gives 98.8%
-   overlap on the Pi (`pi-redis/`) and 64.5% here; there, cross-run
-   stream-pf lands within 4% of stream-same. Cause not investigated
-   (candidates: allocator behaviour under jemalloc, kernel or CRIU
-   version differences).
+4. **Low cross-run overlap comes from heap-layout jitter on the laptop,
+   not from the working set.** (Checked 2026-11-04; test scripts not
+   committed.)
+   - Per 256 MB region, both laptop traces have the same page counts
+     (27210 vs 27212), but the long runs sit a few pages apart (a
+     1313-page run at `…2f8e000` vs `…2f7b000`). The process maps are
+     identical under `setarch -R`; placement inside the jemalloc arena
+     shifts.
+   - Test: start the server three times with ASLR off, load 200k keys,
+     read `DEBUG OBJECT` addresses of 201 sampled keys. Valkey 9.1.2 on
+     the laptop: 87–183/201 at the same address. Redis 8.0.2 on Pi A:
+     193–197/201.
+   - On the laptop, Valkey's random hash seed contributes: its hashtable allocates
+     overflow buckets depending on where keys hash, so table overhead
+     differs per run (5,878,672 / 5,875,408 / 5,875,536 B). Pinning the
+     seed (LD_PRELOAD shim on `/dev/urandom`) makes overhead identical
+     and raises matches to 154–182/201, but not to 201.
+   - Disabling active rehash or jemalloc decay/background purging does
+     not help.
+   - **Valkey itself is deterministic on the Pi.** Valkey 8.1.1 (Debian,
+     jemalloc 5.3.0) on Pi A: 197–201/201, same as Redis 8.0.2
+     (195–199/201). So the laptop, not the Valkey hashtable, is what
+     breaks reproducibility.
+   - On the laptop, not the cause: CPU count (`taskset -c 0-3`: 65–135;
+     `-c 0`: 25–146). Partly the cause: the jemalloc build. Valkey links
+     the system jemalloc, upgraded to 5.4.0 on 2026-10-24; swapping in
+     5.3.1 via `LD_LIBRARY_PATH` gives 142–156/201 (5.4.0: 64–130).
+   - The shifts are whole pages (4, 8 or 20 KB) that appear and vanish
+     along the insertion order rather than accumulating, i.e. freed
+     multi-page extents get reused in a timing-dependent order. Not
+     isolated further; Valkey 9.1 vs 8.1 is also not separated.
+   - Implication: cross-run traces only work for applications whose heap
+     layout is reproducible. Same-image traces do not depend on it.
