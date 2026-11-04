@@ -45,3 +45,7 @@ The stream-same record pass (untimed) took 4.6 s, 32.2 s and 59.4 s.
    at random, so sequential/stride prefetch helps little; adaptive reaches
    13.4 s at 2.16 ms RTT.
 5. **stream-all loses again at 1 Gbit**, with high variance, as for PyTorch.
+
+Note (2026-11-04 audit): recomputing the overlap from the committed
+trace-a/trace-b with the harness formula gives 99.2% (a in b) / 99.1% (b in a),
+not 98.8%. The paper uses 99.2%.

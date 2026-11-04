@@ -4,7 +4,7 @@
 %%  Build: pdflatex regime && bibtex regime && pdflatex regime && pdflatex regime
 %%  Data: eval/results/{regime,regime-stream,pytorch-same,redis-v2,redis-same,
 %%        webapp,pi-stream,pi-stream-pfifo,pi-pytorch-same,pi-redis,pi-webapp,
-%%        pi-webapp-tput,pi-webapp-tput-all2}/  (per-section pointers below)
+%%        pi-webapp-tput,pi-webapp-tput-all2,cc-*,pace-*,stream-diag}/
 %% ============================================================================
 \documentclass[conference]{IEEEtran}
 
@@ -93,7 +93,7 @@ $\text{image}/\text{bandwidth}$. Lazy restore pays one round trip per demand
 fault instead. Which cost is smaller depends on the image size, the working
 set, the bandwidth and the RTT, and no published study maps it for process
 restore. REAP~\cite{ustiugov2021reap}, FaaSnap~\cite{ao2022faasnap} and
-Spice~\cite{holmes2025spice} restore from local storage; AWS records chunk
+Spice~\cite{holmes2025spice} are evaluated on local storage; AWS records chunk
 access order for SnapStart and container loading~\cite{snapstart,
 brooker2023ondemand} but has not published a regime analysis.
 
@@ -106,11 +106,12 @@ four RTTs and three bandwidths for three workloads. No policy wins
 everywhere. The losing policies are not slow because of bandwidth: each
 demand fault costs about one RTT, and the thousands of faults left after
 prefetching decide the outcome.
-\item \textbf{Trace-ordered streaming} (\S\ref{sec:design}). The page server
+\item \textbf{Trace-ordered streaming} (\S\ref{sec:design}), REAP's
+record-and-prefetch~\cite{ustiugov2021reap} adapted to a network. The page server
 pushes a recorded first-touch trace as one request over its own TCP
 connection, at whatever rate TCP achieves; the handler installs pages as
 they land. Demand faults keep their own connection. TTFR then depends on
-the working set's transfer time plus one RTT per page the trace missed.
+the working set's transfer time plus at least one RTT per page the trace missed.
 \item \textbf{Where traces come from matters} (\S\ref{sec:stream},
 \S\ref{sec:misses}). A trace from an earlier run of the same program
 suffices for PyTorch and the web app (96--99.9\,\% page overlap) but not for
@@ -137,21 +138,36 @@ this system; we take the corrected setup as given here.
 % ----------------------------------------------------------------------------
 
 \textbf{Post-copy restore.} Post-copy migration starts the target at once and
-pulls memory on demand; Hines et al.~\cite{hines2009postcopy} added
-adaptive pre-paging for virtual machines on a gigabit LAN. CRIU implements
+pulls memory on demand. Hines et al.~\cite{hines2009postcopy} combine demand
+paging with an active push of the remaining pages from the source and
+pre-paging around each fault, for virtual machines on a gigabit LAN. Our
+\mode{stream-all} and \mode{stream-pf} are those two mechanisms with the
+push ordered by a recorded trace; what we add is when each pays off as RTT
+and bandwidth vary. CRIU implements
 post-copy for processes: \texttt{criu restore --lazy-pages} registers the
 restored memory with \uffd and hands the descriptor to a lazy-pages daemon,
 which resolves each fault with \texttt{UFFDIO\_COPY}. An open CRIU pull
 request streams images for post-copy~\cite{criu-stream-pr}.
 
 \textbf{Snapshot cold starts.} REAP~\cite{ustiugov2021reap} observed that
-serverless functions touch a stable working set after restore, records it on
-the first restore, and prefetches it on later ones. FaaSnap~\cite{ao2022faasnap}
-refines this for VM snapshots. Spice~\cite{holmes2025spice} shows that with
-the right kernel primitives local process restore approaches warm-start
-latency. These systems restore from local storage, where a page costs
-microseconds, not an RTT. Firecracker~\cite{agache2020firecracker} documents
-the \uffd handling rules a snapshot handler must follow~\cite{firecracker-uffd}.
+serverless functions touch a stable working set after restore. It records
+that set once into a compact file and, on later restores, loads it with one
+read before the VM resumes; other pages fault on demand.
+FaaSnap~\cite{ao2022faasnap} records the set from the host side and loads it
+concurrently with execution. \mode{stream-same} is REAP's record-once policy
+with FaaSnap-style overlap, moved onto the network. Spice~\cite{holmes2025spice}
+shows that with the right kernel primitives local process restore approaches
+warm-start latency. These systems are evaluated restoring from local storage,
+where a page costs microseconds. REAP notes that with remote snapshot storage
+retrieval depends on the network's latency and bandwidth, but does not
+measure it. Over a network two further questions arise: whether a trace from
+another run still matches (a miss costs an RTT, \S\ref{sec:misses}), and what
+the pages outside the trace cost after the first response (\S\ref{sec:after}).
+MITOSIS~\cite{wei2023mitosis} forks a process onto another machine and reads
+its parent's memory on demand with one-sided RDMA, at a few microseconds per
+page; we study commodity TCP at RTTs of 0.2--2\,ms.
+Firecracker~\cite{agache2020firecracker} documents the \uffd handling rules a
+snapshot handler must follow~\cite{firecracker-uffd}.
 
 \textbf{Network restore in industry.} AWS Lambda loads container images and
 SnapStart snapshots on demand from a tiered cache and prefetches chunks in a
@@ -218,20 +234,26 @@ shaped with \texttt{netem}~\cite{hemminger2005netem}: delay $d$ on
 \texttt{lo} (so RTT${}=2d$) and a rate cap. The grid is RTT
 $\in\{0, 0.2, 1, 2\}$\,ms $\times$ rate $\in\{100\,\text{Mb/s},
 1\,\text{Gb/s}, 10\,\text{Gb/s}\}$. \emph{Pi}: two Raspberry Pi~5s on a
-direct 1\,GbE link (base RTT 155--164\us). Pi~A runs and restores the
+direct 1\,GbE link (base RTT 154--165\us). Pi~A runs and restores the
 workload; Pi~B runs the page server. \texttt{netem} delay goes on A's egress
 only, so B's data keeps B's real qdisc. Pi~A runs Linux 6.18.59 with CRIU
 4.2.1, except the first PyTorch run (CRIU 4.1.1, \S\ref{sec:pi}).
 
 \textbf{Statistics.} Five iterations per cell, each with a fresh workload
-and checkpoint. We report medians. For the existing policies the population
-standard deviation is at most 3.6\,\% of the median (one outlier
-iteration puts \mode{full}, a 200\,ms floor, at 10\,\%). Streaming with a
-cross-run trace varies far more, up to 56\,\%, because the number of misses
-changes from run to run (\S\ref{sec:misses}). Every win we report, except
-one cell we call a tie, holds for all five iterations: the slowest
+and checkpoint. We report medians. On x86 the population standard
+deviation of the network policies is at most 3.6\,\% of the median; the
+local \mode{full} floor (about 200\,ms) reaches 6--10\,\% in three cells.
+On the Pi one web-app \mode{prefetch} iteration at delay 0 finished in
+339\,ms with 2 faults, against about 2.5\,s for the other four; it shows
+the same signature as the run we discarded in \S\ref{sec:after}, and the
+median is unaffected. Streaming with a cross-run trace varies far more, up
+to 56\,\%, because the number of misses changes from run to run
+(\S\ref{sec:misses}); \mode{stream-same} reaches 30\,\% in one Redis cell.
+Every win we report holds for all five iterations, meaning the slowest
 iteration of the winning streaming mode beats the fastest iteration of the
-best existing policy. Demand-only \mode{lazy} is skipped at 1 and 2\,ms
+best existing policy, with two exceptions: one Redis cell we call a tie,
+and the x86 web app's cross-run win at 2\,ms and 10\,Gb/s, where two of
+five iterations (673 and 702\,ms) lose to eager's fastest (575\,ms). Demand-only \mode{lazy} is skipped at 1 and 2\,ms
 RTT on x86, where it exceeds the 30\,s probe timeout.
 
 % ----------------------------------------------------------------------------
@@ -340,8 +362,8 @@ that trace; it models a system that records once per snapshot and restores
 it many times, as REAP does.
 
 \textbf{What it took.} A first version reused the prefetch thread: one 8\,B
-request per page, up to 1024 in flight. The Python server then capped at
-44k pages/s, and at 2\,ms RTT the request window let the process overtake
+request per page, up to 1024 in flight. The Python server then became the
+bottleneck, and at 2\,ms RTT the request window let the process overtake
 the stream, so most faults were ``ahead''. Server push removed both: the
 server reaches about 275k pages/s on loopback at 10\,Gb/s and line rate at
 1\,Gb/s, and the 0\,ms/10\,Gb/s PyTorch cell fell from 405 to 129\,ms.
@@ -446,29 +468,30 @@ Table~\ref{tab:stream} and Fig.~\ref{fig:rtt} summarize the streaming modes.
 
 \textbf{Cross-run traces.} For PyTorch a stream mode wins all 12 cells,
 by 1.19--3.20$\times$ over the best existing policy; plain \mode{stream} is
-best at 100\,Mb/s, \mode{stream-pf} in the middle, and \mode{stream-all} at
-10\,Gb/s with RTT${}\ge{}$1\,ms. TTFR still rises with RTT (585 to
+best at 100\,Mb/s and at low RTT, \mode{stream-pf} at 0.2\,ms/10\,Gb/s and
+at 1--2\,ms/1\,Gb/s, and \mode{stream-all} at 10\,Gb/s with
+RTT${}\ge{}$1\,ms. TTFR still rises with RTT (585 to
 1028\,ms at 1\,Gb/s) because a few hundred faults miss the trace. The web
 app's two recordings overlap 99.7\,\%, and plain \mode{stream} wins all 12
 cells by 1.25--2.56$\times$. For Redis only 64.5\,\% of one recording's
 pages appear in the other. A stream mode beats the best existing policy by
 1.22--1.34$\times$ in 6 cells, ties within 2\,\% in one, and loses the
-other five by 3--9\,\%: thousands of misses at one RTT each eat the gain.
+other five by 3--9\,\%: thousands of misses at an RTT or more each eat the gain.
 
 \textbf{Same-image trace.} \mode{stream-same} wins all 36 cells: by
 1.22--5.75$\times$ over the best existing policy for PyTorch,
 1.25--3.41$\times$ for Redis and 1.27--3.23$\times$ for the web app, and by
 1.01--3.10$\times$ over the best cross-run stream. Demand faults fall to
-0--4 misses for PyTorch and under 120 faults of any class for Redis.
+0--4 misses for PyTorch and a median under 120 faults of any class for Redis.
 TTFR becomes nearly flat in RTT (PyTorch at 1\,Gb/s: 546 to 561\,ms over
 0--2\,ms) and tracks bandwidth. It lands within 1--2\,\% of
 $\text{working set}/\text{bandwidth}$ at 100\,Mb/s, 3--11\,\% at
 1\,Gb/s, and 30--120\,ms above it at 10\,Gb/s, where restore overheads
-dominate a 50--110\,ms transfer.
+dominate a 50--100\,ms transfer.
 
 \textbf{The cost moved to the record pass.} The record pass is a
 demand-only lazy restore. For PyTorch it takes 0.8--6.3\,s at zero RTT
-and 32--38\,s at 2\,ms; for Redis about 65\,s at 2\,ms. \mode{stream-same}
+and 32--38\,s at 2\,ms; for Redis 65--78\,s at 2\,ms. \mode{stream-same}
 is therefore a number for the second and later restores of a snapshot, not
 the first. Systems that restore one snapshot many times, such as
 serverless platforms and agent sandboxes, amortize it; a one-off migration
@@ -479,15 +502,17 @@ cannot, and must use a cross-run trace or an existing policy.
 \label{sec:misses}
 % ----------------------------------------------------------------------------
 
-Every miss costs one RTT on the demand connection, so the trace's coverage
+Every miss costs at least one RTT on the demand connection, and more when
+its reply queues behind the stream at a slow bottleneck
+(\S\ref{sec:rest}), so the trace's coverage
 of the next run decides how close a cross-run stream gets to
 \mode{stream-same}.
 
-\textbf{PyTorch: fresh heap.} Two PyTorch recordings share 98.0--99.0\,\%
-of pages with a median rank shift of 4. The differences sit in the
-\texttt{brk} heap: one run had a 617-page heap region the other lacked.
-Even the union of three runs' traces leaves 85--690 misses against a
-fourth. Every run allocates some fresh heap that no earlier trace can name.
+\textbf{PyTorch: fresh heap.} Pairs of x86 PyTorch recordings share
+94--98.6\,\% of pages (97.6--98.6\,\% for the pairs behind
+Table~\ref{tab:stream}). The differences sit in the \texttt{brk} heap: in
+one pair, one run had a 617-page heap region the other lacked. Every run
+allocates some fresh heap that no earlier trace can name.
 
 \textbf{Web app: reproducible.} Python randomizes string hashes per
 process, which changes dictionary layouts, yet two web-app recordings share
@@ -501,7 +526,8 @@ runs of pages sit a few pages apart: a 1313-page run starts at
 The process maps are identical under \texttt{setarch -R}; placement inside
 the allocator's arenas differs. We started the server three times with
 ASLR off, loaded the same 200k keys, and read the addresses of 201 sampled
-keys with \texttt{DEBUG OBJECT}:
+keys with \texttt{DEBUG OBJECT}. Ranges span repeated sessions; these
+ad-hoc scripts are not part of the artifact:
 
 \begin{center}
 \small
@@ -527,8 +553,8 @@ overflow buckets depending on where keys hash), and the allocator build
 contributes; disabling active rehashing or jemalloc's decay-based purging
 does not help. We did not isolate the rest, nor separate Valkey 9.1 from
 8.1. The same server family is reproducible on the Pi, where the
-cross-run trace overlaps 98.8\,\% and cross-run streaming comes within
-4\,\% of \mode{stream-same} (\S\ref{sec:pi}).
+cross-run trace overlaps 99.2\,\% and cross-run streaming comes within
+5\,\% of \mode{stream-same} (\S\ref{sec:pi}).
 
 \textbf{Implication.} Cross-run traces work only for programs whose heap
 layout is reproducible, and that is a property of the build and platform,
@@ -542,11 +568,13 @@ from the image itself.
 
 \mode{stream-all} covers misses by streaming every remaining page after the
 trace. It cuts PyTorch faults to about 50 and wins at 10\,Gb/s with high
-RTT, but on loopback it loses badly at 100\,Mb/s: 55 misses cost 12.4\,s,
-about 225\,ms each, because each demand reply queues behind the stream at
-the shaped bottleneck. Delay-based congestion control (Vegas) on the stream
-socket or pacing the rest at 0.7--0.85$\times$ the measured delivery rate
-roughly halves the damage; TCP-LP does nothing, because demand traffic is
+RTT, but on loopback it loses badly at 100\,Mb/s: in one run 55 misses cost
+12.4\,s, about 225\,ms each, because each demand reply queues behind the
+stream at the shaped bottleneck. In a three-iteration side study at
+0\,ms/100\,Mb/s, \mode{stream-all} adds 6.5\,s over \mode{stream} with
+CUBIC; delay-based congestion control (Vegas) on the stream socket cuts that
+to 2.2\,s, and pacing the rest at 0.7$\times$ the measured delivery rate to
+0.4\,s; TCP-LP does nothing, because demand traffic is
 too small to count as a competing flow. No endpoint-only variant matches
 plain \mode{stream} at 100\,Mb/s.
 
@@ -608,12 +636,12 @@ full-net & 2939 & 2937 & 2947 & 4059 & 4064 & 4073 & 2601 & 2607 & 2607 \\
 lazy & 2588 & -- & -- & 4586 & -- & -- & 4854 & -- & -- \\
 prefetch & 1023 & 2850 & 5014 & 3606 & 9989 & 17709 & 2505 & 10396 & 18892 \\
 adaptive & 1029 & 2569 & 4226 & 3616 & 8218 & 13433 & 2484 & 8008 & 13490 \\
-stream & 728 & 1127 & 1594 & 1018 & 1155 & 1359 & \textbf{966} & 973 & 989 \\
+stream & 728 & 1127 & 1594 & 1018 & 1155 & 1359 & \textbf{966} & \textbf{973} & 989 \\
 stream-pf & 700 & 867 & 1076 & 1021 & 1049 & 1058 & 1127 & 1313 & 1591 \\
 stream-all & 1145 & 1249 & 1372 & 1317 & 1715 & 1742 & 1322 & 1454 & 1526 \\
-stream-same & \textbf{561}$^\dagger$ & \textbf{597}$^\dagger$ & \textbf{617}$^\dagger$ & \textbf{1002} & \textbf{1006} & \textbf{1014} & 972 & \textbf{979} & \textbf{985} \\
+stream-same & \textbf{561}$^\dagger$ & \textbf{597}$^\dagger$ & \textbf{617}$^\dagger$ & \textbf{1002} & \textbf{1006} & \textbf{1014} & 972 & 979 & \textbf{985} \\
 \midrule
-speedup & 1.82$\times$ & 4.30$\times$ & 4.78$\times$ & 3.60$\times$ & 4.04$\times$ & 4.02$\times$ & 2.57$\times$ & 2.66$\times$ & 2.65$\times$ \\
+speedup & 1.82$\times$ & 4.30$\times$ & 4.78$\times$ & 3.60$\times$ & 4.04$\times$ & 4.02$\times$ & 2.57$\times$ & 2.68$\times$ & 2.65$\times$ \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -625,8 +653,8 @@ Table~\ref{tab:pi} repeats the comparison on two Raspberry Pi~5s.
 1\,Gb/s cells (1.49--2.90$\times$), and \mode{stream-same} by
 1.82--4.78$\times$, with 13--18 misses per run. The existing policies order
 the same way: prefetch wins at low RTT and eager from about 2\,ms. Each
-cross-run miss costs about one RTT plus 0.7\,ms of service time on the Pi;
-prefetching around misses removes a third of them.
+cross-run miss costs about one RTT plus 0.3--0.7\,ms on the Pi;
+prefetching around misses removes nearly half of them (medians 548--581 to 299--309).
 
 \textbf{Redis and the web app gain 2.6--4.0$\times$.} Redis touches
 111\,MB of a 437\,MB image before its first reply; eager moves all of it
@@ -635,7 +663,7 @@ prefetching around misses removes a third of them.
 0.9\,s, it took 1.00--1.01\,s, the process overtook the stream about 400
 times (``ahead'' faults) and only 7 pages missed. The web app touches
 42\,\% of its image, so its gain is smaller (2.6--2.7$\times$). On the Pi
-both have reproducible layouts (98.8\,\% and 99.9\,\% trace overlap), so
+both have reproducible layouts (99.2\,\% and 99.9\,\% trace overlap), so
 cross-run streaming comes within 5\,\% of \mode{stream-same}. For the
 web app, prefetching around misses \emph{hurts} (\mode{stream-pf} is
 17--61\,\% slower than \mode{stream}): it puts pages the process never
@@ -733,7 +761,7 @@ log to its dump-time size and removes the pidfile between passes.
 
 \textbf{Nagle again.} The web app's \texttt{http.server} writes headers and
 body separately. Over TCP, Nagle's algorithm holds the body until the
-client's delayed ACK: the 200-request probe took 8.4\,s instead of 120\,ms.
+client's delayed ACK: in a manual test the 200-request probe took 8.4\,s instead of 120\,ms.
 Production servers set \texttt{TCP\_NODELAY}, and so does ours.
 
 % ----------------------------------------------------------------------------
@@ -764,10 +792,14 @@ not transfer; others might not either.
 and restore overheads, not the network, set the remaining 30--120\,ms.
 \item Five iterations per cell. Cross-run streaming is noisy (standard
 deviation up to 56\,\% of the median); more iterations would narrow its
-medians, though the wins we report hold in every iteration.
+medians; all but two of the wins we report hold in every iteration.
+\item The side studies of congestion control and pacing (\S\ref{sec:rest})
+use three iterations.
 \item Post-response behavior was measured for one workload, on the Pis.
 \item The cause of x86 heap-layout jitter is only partly identified, and
-two Pi \mode{stream-all} anomalies (\S\ref{sec:after}) are unexplained.
+three Pi anomalies are unexplained: the \mode{stream-all} TTFR gap and
+the discarded run (\S\ref{sec:after}), and one fast \mode{prefetch}
+iteration (\S\ref{sec:setup}).
 \end{itemize}
 
 % ----------------------------------------------------------------------------

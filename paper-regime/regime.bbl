@@ -72,6 +72,11 @@ M.~R. Hines, U.~Deshpande, and K.~Gopalan, ``Post-copy live migration of
   \url{https://github.com/checkpoint-restore/criu/pull/3200}, open as of
   November 2026.
 
+\bibitem{wei2023mitosis}
+X.~Wei, F.~Lu, T.~Wang, J.~Gu, Y.~Yang, R.~Chen, and H.~Chen, ``No provisioned
+  concurrency: Fast {RDMA}-codesigned remote fork for serverless computing,''
+  in \emph{Proc.\ USENIX OSDI}, 2023, pp. 497--517.
+
 \bibitem{agache2020firecracker}
 A.~Agache, M.~Brooker, A.~Iordache, A.~Liguori, R.~Neugebauer, P.~Piwonka, and
   D.-M. Popa, ``Firecracker: Lightweight virtualization for serverless
