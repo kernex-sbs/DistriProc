@@ -233,6 +233,8 @@ run_one() {  # $1=mode $2=iteration $3=delay_us; env DISTRIPROC_TCP_NODELAY
             args=$(handler_args "$mode")
             [ "$mode" = "lazy-stream-all" ] && rest=1
             [ "$mode" = "lazy-record" ] && trace_env="$RECORD_TO"
+            # FAULT_TRACES=1: keep every run's demand-fault sequence
+            [ -z "$trace_env" ] && [ -n "${FAULT_TRACES:-}" ] && trace_env="$OUT_DIR/${WORKLOAD}_${tag}_faults.trace"
             # shellcheck disable=SC2086
             handler_pid=$(DISTRIPROC_TRACE="$trace_env" DISTRIPROC_STREAM_REST=$rest \
                 start_lazy_handler "$work_dir" "$PAGE_SERVER_HOST" "$PORT" $args)
@@ -242,6 +244,7 @@ run_one() {  # $1=mode $2=iteration $3=delay_us; env DISTRIPROC_TCP_NODELAY
     fi
 
     TTFR_MS=0; workload_ttfr_probe "$work_dir" || true; local ttfr_ms="$TTFR_MS"
+    { ss -tnpa; ps -eo pid,ppid,stat,etimes,args; } > "$work_dir/probe_ss.txt" 2>&1 || true
     if [ "$ttfr_ms" = "-1" ]; then
         log_warn "[$WORKLOAD/$mode] iter $iter probe FAILED: restored pid=$restored_pid"
         tail -15 "$work_dir/restore.log" >&2 2>/dev/null || true
@@ -261,6 +264,13 @@ run_one() {  # $1=mode $2=iteration $3=delay_us; env DISTRIPROC_TCP_NODELAY
     fi
     ssh "$PAGE_SERVER_SSH" "cat '$REMOTE_WORK/page_server.log'" > "$work_dir/page_server.log" 2>/dev/null || true
     stop_remote_server
+    # A lazy restore that answers the probe with almost no faults means
+    # something else served it; keep the evidence.
+    if [[ $mode == lazy* ]] && [ "${stats%%,*}" -ge 0 ] && [ "${stats%%,*}" -lt 50 ]; then
+        log_warn "[$WORKLOAD/$mode] iter $iter: only ${stats%%,*} faults, keeping restore.log"
+        cp "$work_dir/probe_ss.txt" "$OUT_DIR/${WORKLOAD}_${tag}_ss.txt" 2>/dev/null || true
+        cp "$work_dir/restore.log" "$OUT_DIR/${WORKLOAD}_${tag}_restore.log" 2>/dev/null || true
+    fi
     for lg in handler record_handler page_server; do
         cp "$work_dir/$lg.log" "$OUT_DIR/${WORKLOAD}_${tag}_${lg}.log" 2>/dev/null || true
     done

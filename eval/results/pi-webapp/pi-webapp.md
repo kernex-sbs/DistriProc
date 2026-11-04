@@ -79,3 +79,37 @@ probe plus the follow-up load has been served. 5 iterations, medians.
    traces: both record passes finished in about 330 ms with 5 faults, as if
    restored eagerly. It started a minute after the previous run ended; the
    rerun two minutes later was normal. Cause not found.
+
+## Diagnosis (2026-11-04 evening): the stream-pf / stream-all numbers above are atypical
+
+Runs: `pi-diag-nt/` (no throughput phase) and `pi-diag-tp/` (with it), both
+lazy, lazy-prefetch, stream, stream-pf, stream-all at delay 0, n=5, with
+per-run fault traces (`FAULT_TRACES=1`); `pi-envtest/` (record only, launch
+environment of the main run); `pi-webapp-stream2/` (rerun of the four
+streaming modes at 0/1/2 ms, n=5). The paper's Pi table now uses
+`pi-webapp-stream2/` for the web-app streaming rows.
+
+| mode | main run (above) | rerun 0 / 1 / 2 ms |
+|---|---|---|
+| stream | 966 / 973 / 989 | 964 / 969 / 980 |
+| stream-pf | 1127 / 1313 / 1591 | 1041 / 1046 / 1125 |
+| stream-all | 1322 / 1454 / 1526 | 1044 / 1092 / 1298 |
+| stream-same | 972 / 979 / 985 | 972 / 977 / 984 |
+
+1. **The throughput phase is not the cause.** stream-all at delay 0 takes
+   1040 ms without it and 1042 ms with it (`pi-diag-nt`/`pi-diag-tp`).
+2. **The main run had a different memory layout.** Its trace shares only
+   93.6-93.9% of pages with the traces of six later runs, which agree with
+   each other at 99.3-99.8%; the differing pages are brk heap (~1500) and
+   stack/mmap (~100); its stack top is one page lower (0x7fffffe000 vs
+   0x7ffffff000). Same code on Pi A throughout (file mtimes 10:31). In that
+   layout stream-pf/stream-all missed ~380 pages vs ~170-230 now, each miss
+   costing 1-2 ms behind the extra pushed pages. A record-only replica of
+   the main run's launch environment (`pi-envtest/`) gave the later layout
+   (99.75%), so the cause is not found.
+3. **stream-pf / stream-all fault on 60-90 heap pages that stream and the
+   record pass never touch** (misses 181-231 vs 113-144 for stream), which
+   is why they lose to stream even with the same trace.
+4. **The fast-restore anomaly** (2-5 faults, ~330 ms) did not recur in 50
+   lazy runs with the new evidence capture (ss/ps snapshot after the probe,
+   restore.log kept when a lazy run has < 50 faults).

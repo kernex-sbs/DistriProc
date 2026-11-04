@@ -4,7 +4,7 @@
 %%  Build: pdflatex regime && bibtex regime && pdflatex regime && pdflatex regime
 %%  Data: eval/results/{regime,regime-stream,pytorch-same,redis-v2,redis-same,
 %%        webapp,pi-stream,pi-stream-pfifo,pi-pytorch-same,pi-redis,pi-webapp,
-%%        pi-webapp-tput,pi-webapp-tput-all2,cc-*,pace-*,stream-diag}/
+%%        pi-webapp-tput,pi-webapp-tput-all2,pi-webapp-stream2,cc-*,pace-*,stream-diag}/
 %% ============================================================================
 \documentclass[conference]{IEEEtran}
 
@@ -621,8 +621,9 @@ over the best existing policy. Image / trace: PyTorch 306 / 61\,MB,
 Redis 437 / 111\,MB, web app 259 / 109\,MB. PyTorch rows use CRIU 4.1.1 except
 \mode{stream-same}$^\dagger$, a later run with CRIU 4.2.1 in which
 \mode{full-net} and \mode{stream-pf} were within 6\,\% of these values.
+Web-app streaming rows$^\ddagger$ come from a rerun (\S\ref{sec:pi}).
 {Data: \texttt{pi-stream/}, \texttt{pi-pytorch-same/},
-\texttt{pi-redis/}, \texttt{pi-webapp/}.}}
+\texttt{pi-redis/}, \texttt{pi-webapp/}, \texttt{pi-webapp-stream2/}.}}
 \label{tab:pi}
 \setlength{\tabcolsep}{5pt}
 \begin{tabular}{@{}l|rrr|rrr|rrr@{}}
@@ -636,12 +637,12 @@ full-net & 2939 & 2937 & 2947 & 4059 & 4064 & 4073 & 2601 & 2607 & 2607 \\
 lazy & 2588 & -- & -- & 4586 & -- & -- & 4854 & -- & -- \\
 prefetch & 1023 & 2850 & 5014 & 3606 & 9989 & 17709 & 2505 & 10396 & 18892 \\
 adaptive & 1029 & 2569 & 4226 & 3616 & 8218 & 13433 & 2484 & 8008 & 13490 \\
-stream & 728 & 1127 & 1594 & 1018 & 1155 & 1359 & \textbf{966} & \textbf{973} & 989 \\
-stream-pf & 700 & 867 & 1076 & 1021 & 1049 & 1058 & 1127 & 1313 & 1591 \\
-stream-all & 1145 & 1249 & 1372 & 1317 & 1715 & 1742 & 1322 & 1454 & 1526 \\
-stream-same & \textbf{561}$^\dagger$ & \textbf{597}$^\dagger$ & \textbf{617}$^\dagger$ & \textbf{1002} & \textbf{1006} & \textbf{1014} & 972 & 979 & \textbf{985} \\
+stream & 728 & 1127 & 1594 & 1018 & 1155 & 1359 & \textbf{964}$^\ddagger$ & \textbf{969}$^\ddagger$ & \textbf{980}$^\ddagger$ \\
+stream-pf & 700 & 867 & 1076 & 1021 & 1049 & 1058 & 1041$^\ddagger$ & 1046$^\ddagger$ & 1125$^\ddagger$ \\
+stream-all & 1145 & 1249 & 1372 & 1317 & 1715 & 1742 & 1044$^\ddagger$ & 1092$^\ddagger$ & 1298$^\ddagger$ \\
+stream-same & \textbf{561}$^\dagger$ & \textbf{597}$^\dagger$ & \textbf{617}$^\dagger$ & \textbf{1002} & \textbf{1006} & \textbf{1014} & 972$^\ddagger$ & 977$^\ddagger$ & 984$^\ddagger$ \\
 \midrule
-speedup & 1.82$\times$ & 4.30$\times$ & 4.78$\times$ & 3.60$\times$ & 4.04$\times$ & 4.02$\times$ & 2.57$\times$ & 2.68$\times$ & 2.65$\times$ \\
+speedup & 1.82$\times$ & 4.30$\times$ & 4.78$\times$ & 3.60$\times$ & 4.04$\times$ & 4.02$\times$ & 2.58$\times$ & 2.69$\times$ & 2.66$\times$ \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -665,9 +666,25 @@ times (``ahead'' faults) and only 7 pages missed. The web app touches
 42\,\% of its image, so its gain is smaller (2.6--2.7$\times$). On the Pi
 both have reproducible layouts (99.2\,\% and 99.9\,\% trace overlap), so
 cross-run streaming comes within 5\,\% of \mode{stream-same}. For the
-web app, prefetching around misses \emph{hurts} (\mode{stream-pf} is
-17--61\,\% slower than \mode{stream}): it puts pages the process never
-needs on the link ahead of ones it does.
+web app, sending more than the trace \emph{hurts}: \mode{stream-pf} is
+8--15\,\% and \mode{stream-all} 8--32\,\% slower than \mode{stream}. Both
+put pages the process does not yet need on the link ahead of the misses it
+waits for, and both also fault on 60--90 heap pages that plain
+\mode{stream} and the record pass never touch (181--231 misses against
+113--144).
+
+\textbf{One run's layout was different.} The web-app streaming rows of
+Table~\ref{tab:pi} come from a rerun. In the main run, \mode{stream-pf}
+and \mode{stream-all} were 17--61\,\% slower than \mode{stream}, with
+about 380 misses each. That run's traces share only 94\,\% of their pages
+with the traces of six later runs, which agree with one another at
+99.3--99.8\,\%, although the code was the same; its
+stack top also sits one page lower. Within the run, its two recordings
+agreed at 99.9\,\%, so the trace still matched, but more of the pages
+these two modes touched lay outside it. Recording again with that run's
+launch environment reproduced the later layout, not the earlier one; we
+did not find the cause. \mode{stream} and \mode{stream-same} moved by
+under 1\,\% between the runs.
 
 \textbf{Old lazy policies collapse with RTT.} Random access defeats
 sequential prefetch, which still leaves 6--9k faults for Redis and the web
@@ -723,15 +740,20 @@ response 2.3--2.5$\times$ sooner than eager and finishes all 1200 requests
 (complete about 2.3\,s in) while requests are served. Throughput while the
 rest is still arriving is about half of eager's; once a process holds all
 its pages it runs at full speed (\mode{full}, \mode{full-net}:
-1071--1077\,req/s). Its TTFR here (1045 and 1134\,ms) is lower than in the
-main Pi run of Table~\ref{tab:pi} (1322 and 1526\,ms), with under 2\,\%
-spread in each; we have not explained the difference.
+1071--1077\,req/s). Its TTFR here (1045 and 1134\,ms) matches
+Table~\ref{tab:pi} at the base RTT (1044\,ms) and is 13\,\% lower at
+2\,ms (1298\,ms, iterations 1257--1337); at higher RTT
+\mode{stream-all} varies more between runs than the other streaming
+modes. A control run showed that the follow-up load itself does not change
+TTFR: with and without it, \mode{stream-all} took 1040 and 1042\,ms.
 
 A first attempt at this \mode{stream-all} run recorded 5-page traces (both
 record passes finished in about 330\,ms with 5 faults, as if restored
 eagerly); it started a minute after the previous run ended. A rerun two
 minutes later was normal. We discarded the first attempt and did not find
-the cause.
+the cause. With the harness recording sockets, processes and the restore
+log whenever a lazy restore answers with under 50 faults, 50 further lazy
+runs did not reproduce it.
 
 % ----------------------------------------------------------------------------
 \section{Implementation Pitfalls}
@@ -797,9 +819,9 @@ medians; all but two of the wins we report hold in every iteration.
 use three iterations.
 \item Post-response behavior was measured for one workload, on the Pis.
 \item The cause of x86 heap-layout jitter is only partly identified, and
-three Pi anomalies are unexplained: the \mode{stream-all} TTFR gap and
-the discarded run (\S\ref{sec:after}), and one fast \mode{prefetch}
-iteration (\S\ref{sec:setup}).
+three Pi observations are unexplained: one web-app run's different
+memory layout (\S\ref{sec:pi}), the discarded run (\S\ref{sec:after})
+and one fast \mode{prefetch} iteration (\S\ref{sec:setup}).
 \end{itemize}
 
 % ----------------------------------------------------------------------------
