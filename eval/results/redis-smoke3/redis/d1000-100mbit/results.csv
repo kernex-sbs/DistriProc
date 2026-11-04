@@ -1,0 +1,8 @@
+workload,mode,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms
+redis,full,1,184,0,0,0,0,0,0,0,185
+redis,full-net,1,22388,0,0,0,0,0,0,0,176
+redis,lazy-prefetch,1,34156,0,6872,59621,0,0,64869,0,175
+redis,lazy-adaptive,1,31551,0,4815,64933,4,0,68220,0,179
+redis,lazy-stream,1,24300,0,5794,0,0,0,35578,29786,185
+redis,lazy-stream-pf,1,20310,0,2555,15340,0,0,47112,29752,182
+redis,lazy-stream-all,1,24265,0,125,0,0,0,72696,72577,194

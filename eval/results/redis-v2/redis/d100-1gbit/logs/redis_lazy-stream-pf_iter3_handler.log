@@ -1,0 +1,50 @@
+Config: prefetch=on adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=/home/utkarsh/Work/proc/distriProc/eval/results/redis-v2/redis/trace-a/redis.trace
+Listening on /tmp/distriproc-bench-redis-lazy-stream-pf-Mwxnlf/lazy-pages.socket
+Connected to page server at 127.0.0.1:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 4175733
+Received userfaultfd: 3
+Started async prefetch thread
+Async prefetch: connected to page server
+Started eager fetch thread
+Handling page faults...
+Eager fetch: streaming 29794 pages
+Fault 1: 0x7ffff72e1000 (prefetched 0)
+Fault 2: 0x7ffff63fe000 (prefetched 0)
+Fault 3: 0x7ffff5bfd000 (prefetched 0)
+Fault 4: 0x7ffff53fc000 (prefetched 0)
+Fault 5: 0x7ffff43fa000 (prefetched 0)
+Fault 6: 0x7ffff4bfb000 (prefetched 0)
+Fault 7: 0x7ffff35fe000 (prefetched 0)
+Restore finished (magic received)
+Fault 8: 0x7ffff6895000 (prefetched 16)
+Fault 9: 0x7fffe1e94000 (prefetched 0)
+Fault 10: 0x7ffff69df000 (prefetched 10)
+Eager fetch: streamed in 1022 ms (29148 pages/s)
+Eager fetch: installed 29686 hot pages
+Fault 100: 0x7fffe4672000 (prefetched 5)
+Fault 200: 0x7fffe1e8d000 (prefetched 9)
+Fault 300: 0x7fffe5221000 (prefetched 12)
+Fault 400: 0x7fffeaa2f000 (prefetched 7)
+Fault 500: 0x7fffeac6e000 (prefetched 4)
+Fault 600: 0x7ffff014f000 (prefetched 4)
+Fault 700: 0x7fffec11f000 (prefetched 8)
+Fault 800: 0x7fffec2a5000 (prefetched 0)
+Fault 900: 0x7fffe72c5000 (prefetched 11)
+Fault 1000: 0x7fffeefe0000 (prefetched 4)
+Fault 1100: 0x7fffeb93d000 (prefetched 4)
+Fault 1200: 0x7fffeba51000 (prefetched 6)
+Fault 1300: 0x7fffeecbf000 (prefetched 13)
+Fault 1400: 0x7fffea0a7000 (prefetched 11)
+Fault 1500: 0x7fffe6b4a000 (prefetched 9)
+Fault 1600: 0x7fffe8c00000 (prefetched 3)
+Fault 1700: 0x7fffe92a3000 (prefetched 1)
+Fault 1800: 0x7fffe5a3d000 (prefetched 8)
+Fault 1900: 0x7ffff09ad000 (prefetched 13)
+Fault 2000: 0x7fffe1a9b000 (prefetched 1)
+Enqueue: 1730 calls, 0.9 ms on fault path, mean depth 1, dedup=linear
+Stream faults: landed 0 (0.0 ms), ahead 20 (194.5 ms), miss 1991 (1593.9 ms)
+Prefetch stats: 2011 faults, 11982 prefetched, 0 hits (0% hit rate)
+Total pages served: 43217
+Prefetch duplicates skipped: 62

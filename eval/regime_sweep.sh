@@ -9,7 +9,8 @@
 #         RATES ("100mbit 1gbit 10gbit"), LAZY_MAX_DELAY_US (250: demand-only
 #         lazy beyond this exceeds the 30 s probe timeout),
 #         MODES ("full,full-net,lazy-prefetch,lazy-adaptive,lazy-stream"),
-#         SWEEP_NAME (regime)
+#         SWEEP_NAME (regime); workload env (REDIS_KEYS, NO_THROUGHPUT...)
+#         passes through
 # lazy-stream first records the demand-fault trace twice on an unshaped link
 # (trace-a is streamed, trace-b only measures how stable the trace is).
 # Output: eval/results/<SWEEP_NAME>/<workload>/d<delay>-<rate>/results.csv,

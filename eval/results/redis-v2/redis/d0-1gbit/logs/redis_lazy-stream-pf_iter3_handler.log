@@ -1,0 +1,47 @@
+Config: prefetch=on adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=/home/utkarsh/Work/proc/distriProc/eval/results/redis-v2/redis/trace-a/redis.trace
+Listening on /tmp/distriproc-bench-redis-lazy-stream-pf-H3CNcw/lazy-pages.socket
+Connected to page server at 127.0.0.1:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 4157870
+Received userfaultfd: 3
+Started async prefetch thread
+Async prefetch: connected to page server
+Started eager fetch thread
+Handling page faults...
+Eager fetch: streaming 29794 pages
+Fault 1: 0x7ffff72e1000 (prefetched 0)
+Fault 2: 0x7ffff63fe000 (prefetched 0)
+Fault 3: 0x7ffff5bfd000 (prefetched 0)
+Fault 4: 0x7ffff4bfb000 (prefetched 0)
+Fault 5: 0x7ffff53fc000 (prefetched 0)
+Fault 6: 0x7ffff35fe000 (prefetched 0)
+Fault 7: 0x7ffff43fa000 (prefetched 0)
+Restore finished (magic received)
+Fault 8: 0x7ffff6895000 (prefetched 16)
+Fault 9: 0x7ffff69df000 (prefetched 10)
+Fault 10: 0x7fffe1e3c000 (prefetched 0)
+Eager fetch: streamed in 996 ms (29911 pages/s)
+Eager fetch: installed 29755 hot pages
+Fault 100: 0x7fffe12f6000 (prefetched 12)
+Fault 200: 0x7fffea81f000 (prefetched 8)
+Fault 300: 0x7ffff2098000 (prefetched 15)
+Fault 400: 0x7fffee2d0000 (prefetched 4)
+Fault 500: 0x7ffff137a000 (prefetched 15)
+Fault 600: 0x7fffe88bf000 (prefetched 7)
+Fault 700: 0x7fffecad0000 (prefetched 4)
+Fault 800: 0x7fffec361000 (prefetched 2)
+Fault 900: 0x7fffe8c23000 (prefetched 6)
+Fault 1000: 0x7fffe9119000 (prefetched 8)
+Fault 1100: 0x7fffef2b0000 (prefetched 3)
+Fault 1200: 0x7ffff0e88000 (prefetched 15)
+Fault 1300: 0x7fffea0a7000 (prefetched 11)
+Fault 1400: 0x7fffe6d55000 (prefetched 0)
+Fault 1500: 0x7fffe8d0b000 (prefetched 7)
+Fault 1600: 0x7fffe4fdf000 (prefetched 2)
+Fault 1700: 0x7fffe9161000 (prefetched 7)
+Enqueue: 1564 calls, 0.8 ms on fault path, mean depth 1, dedup=linear
+Stream faults: landed 0 (0.0 ms), ahead 17 (220.8 ms), miss 1766 (1168.5 ms)
+Prefetch stats: 1783 faults, 10211 prefetched, 0 hits (0% hit rate)
+Total pages served: 41300
+Prefetch duplicates skipped: 113

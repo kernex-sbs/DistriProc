@@ -1,0 +1,28 @@
+Config: prefetch=off adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=/home/utkarsh/Work/proc/distriProc/eval/results/redis-v2/redis/trace-a/redis.trace
+Listening on /tmp/distriproc-bench-redis-lazy-stream-all-2WOe6G/lazy-pages.socket
+Connected to page server at 127.0.0.1:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 4189843
+Received userfaultfd: 3
+Started eager fetch thread
+Handling page faults...
+Eager fetch: streaming 29794 pages + rest
+Fault 1: 0x7ffff72e1000 (prefetched 0)
+Fault 2: 0x7ffff5bfd000 (prefetched 0)
+Fault 3: 0x7ffff63fe000 (prefetched 0)
+Fault 4: 0x7ffff53fc000 (prefetched 0)
+Fault 5: 0x7ffff43fa000 (prefetched 0)
+Fault 6: 0x7ffff4bfb000 (prefetched 0)
+Fault 7: 0x7ffff35fe000 (prefetched 0)
+Restore finished (magic received)
+Fault 8: 0x55555588e000 (prefetched 0)
+Fault 9: 0x7ffff6895000 (prefetched 0)
+Fault 10: 0x7ffff6b08000 (prefetched 0)
+Fault 100: 0x7fffe1f0d000 (prefetched 0)
+Eager fetch: streamed in 9897 ms (3010 pages/s)
+Eager fetch: rest 43524/43524 pages, done at 24299 ms
+Eager fetch: installed 72911 hot pages
+Stream faults: landed 0 (0.0 ms), ahead 19 (2348.8 ms), miss 139 (21949.1 ms)
+Prefetch stats: 158 faults, 0 prefetched, 0 hits (0% hit rate)
+Total pages served: 73063

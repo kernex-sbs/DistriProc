@@ -1,0 +1,2 @@
+workload,mode,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms
+redis,lazy-record,1,1159,0,29793,0,0,0,29793,0,170

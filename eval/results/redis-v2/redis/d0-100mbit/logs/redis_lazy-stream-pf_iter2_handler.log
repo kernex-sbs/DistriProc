@@ -1,0 +1,57 @@
+Config: prefetch=on adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=/home/utkarsh/Work/proc/distriProc/eval/results/redis-v2/redis/trace-a/redis.trace
+Listening on /tmp/distriproc-bench-redis-lazy-stream-pf-2VsQMw/lazy-pages.socket
+Connected to page server at 127.0.0.1:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 4150953
+Received userfaultfd: 3
+Started async prefetch thread
+Async prefetch: connected to page server
+Started eager fetch thread
+Handling page faults...
+Eager fetch: streaming 29794 pages
+Fault 1: 0x7ffff72e1000 (prefetched 0)
+Fault 2: 0x7ffff63fe000 (prefetched 0)
+Fault 3: 0x7ffff5bfd000 (prefetched 0)
+Fault 4: 0x7ffff53fc000 (prefetched 0)
+Fault 5: 0x7ffff4bfb000 (prefetched 0)
+Fault 6: 0x7ffff43fa000 (prefetched 0)
+Fault 7: 0x7ffff35fe000 (prefetched 0)
+Restore finished (magic received)
+Fault 8: 0x7ffff6895000 (prefetched 16)
+Fault 9: 0x7ffff3775000 (prefetched 0)
+Fault 10: 0x7ffff69df000 (prefetched 10)
+Eager fetch: streamed in 9949 ms (2995 pages/s)
+Eager fetch: installed 29753 hot pages
+Fault 100: 0x7fffe4498000 (prefetched 13)
+Fault 200: 0x7fffe48f9000 (prefetched 8)
+Fault 300: 0x7ffff2c1a000 (prefetched 16)
+Fault 400: 0x7fffe1631000 (prefetched 11)
+Fault 500: 0x7fffe5838000 (prefetched 9)
+Fault 600: 0x7fffed8d1000 (prefetched 9)
+Fault 700: 0x7fffeb52c000 (prefetched 0)
+Fault 800: 0x7fffeecab000 (prefetched 15)
+Fault 900: 0x7fffeb706000 (prefetched 3)
+Fault 1000: 0x7fffe54c3000 (prefetched 6)
+Fault 1100: 0x7ffff1b7c000 (prefetched 0)
+Fault 1200: 0x7fffe9855000 (prefetched 13)
+Fault 1300: 0x7ffff15bb000 (prefetched 8)
+Fault 1400: 0x7fffecb1a000 (prefetched 0)
+Fault 1500: 0x7fffe4df4000 (prefetched 0)
+Fault 1600: 0x7fffe510d000 (prefetched 8)
+Fault 1700: 0x7fffe555a000 (prefetched 12)
+Fault 1800: 0x7fffe6e7d000 (prefetched 7)
+Fault 1900: 0x7fffe7449000 (prefetched 15)
+Fault 2000: 0x7fffe7e28000 (prefetched 3)
+Fault 2100: 0x7fffe3b36000 (prefetched 15)
+Fault 2200: 0x7fffe7b1b000 (prefetched 2)
+Fault 2300: 0x7fffe2f8d000 (prefetched 0)
+Fault 2400: 0x7fffe45ee000 (prefetched 4)
+Fault 2500: 0x7fffe4951000 (prefetched 0)
+Fault 2600: 0x7fffe4263000 (prefetched 2)
+Fault 2700: 0x7fffe4b0d000 (prefetched 0)
+Enqueue: 2394 calls, 2.4 ms on fault path, mean depth 1, dedup=linear
+Stream faults: landed 0 (0.0 ms), ahead 13 (1482.9 ms), miss 2694 (15502.4 ms)
+Prefetch stats: 2707 faults, 18428 prefetched, 0 hits (0% hit rate)
+Total pages served: 50312
+Prefetch duplicates skipped: 174

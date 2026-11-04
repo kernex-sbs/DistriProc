@@ -118,6 +118,7 @@ handler_args_for_mode() {
         lazy-hot)       echo "--prefetch-seq 16 --prefetch-stride 8" ;;
         lazy-record)    echo "--no-prefetch" ;;
         lazy-stream)    echo "--no-prefetch" ;;
+        lazy-stream-same) echo "--no-prefetch" ;;
         lazy-stream-pf) echo "--prefetch-seq 16 --prefetch-stride 8" ;;
         lazy-stream-all) echo "--no-prefetch" ;;
         *)              echo "ERROR: unknown mode $mode" >&2; return 1 ;;
@@ -147,6 +148,10 @@ run_iteration() {
         lazy-record)
             mkdir -p "$(dirname "$trace_file")"
             trace_env="$trace_file"; WL_LAUNCH="setarch -R" ;;
+        lazy-stream-same)
+            # REAP-style: the trace comes from a first restore of this same
+            # image (step 3b), so heap layout cannot diverge.
+            trace_file="$work_dir/same.trace"; WL_LAUNCH="setarch -R" ;;
         lazy-stream*)
             [ -s "$trace_file" ] || { log_error "no trace $trace_file (run lazy-record first)"; return 1; }
             WL_LAUNCH="setarch -R" ;;
@@ -178,6 +183,32 @@ run_iteration() {
     # so a write landing before the probe starts is not discarded.
     if declare -F workload_pre_restore >/dev/null; then
         workload_pre_restore "$work_dir"
+    fi
+
+    # 3b. lazy-stream-same: record this image's fault order on an untimed
+    # first lazy restore, then restore it again below, streaming that trace.
+    if [ "$mode" = "lazy-stream-same" ]; then
+        port=$(find_available_port 9999)
+        page_server_pid=$(start_page_server "$work_dir" "$port")
+        handler_pid=$(DISTRIPROC_TRACE="$trace_file" start_lazy_handler "$work_dir" "127.0.0.1" "$port" --no-prefetch)
+        RESTORE_T_START=$(time_ms)
+        restored_pid=$(criu_restore_lazy "$work_dir")
+        workload_ttfr_probe "$work_dir" || true
+        log_info "[$wl_name/$mode] record pass TTFR = ${TTFR_MS}ms"
+        kill -9 "$restored_pid" 2>/dev/null || true
+        kill "$handler_pid" "$page_server_pid" 2>/dev/null || true
+        # handler closes the trace on exit; restore needs the PID free again
+        for _ in $(seq 50); do
+            kill -0 "$handler_pid" 2>/dev/null || kill -0 "$restored_pid" 2>/dev/null || break
+            sleep 0.2
+        done
+        kill -9 "$handler_pid" 2>/dev/null || true
+        mv "$work_dir/handler.log" "$work_dir/record_handler.log"
+        rm -f "$work_dir/restore.pid"  # CRIU 4.2 won't overwrite a pidfile
+        [ -s "$trace_file" ] || { log_error "record pass left no trace"; return 1; }
+        if declare -F workload_pre_restore >/dev/null; then
+            workload_pre_restore "$work_dir"
+        fi
     fi
 
     # 4. Restore — record t_start for TTFR measurement
@@ -231,7 +262,9 @@ run_iteration() {
     # 6. Measure throughput
     log_info "[$wl_name/$mode] measuring throughput..."
     THROUGHPUT=0
-    workload_throughput || true
+    # NO_THROUGHPUT=1: skip it, e.g. redis-benchmark would fault in (and trace)
+    # pages of the restored server beyond the TTFR probe
+    [ -n "${NO_THROUGHPUT:-}" ] || workload_throughput || true
     throughput="$THROUGHPUT"
     log_info "[$wl_name/$mode] throughput = ${throughput} ops/sec"
 
@@ -264,7 +297,7 @@ run_iteration() {
     csv_append "$CSV_FILE" "${wl_name},${mode},${iter},${ttfr_ms},${throughput},${handler_stats},${checkpoint_ms}"
 
     # 9. Preserve logs for later policy analysis
-    for name in dump.log restore.log handler.log page_server.log workload.log; do
+    for name in dump.log restore.log handler.log record_handler.log page_server.log workload.log; do
         if [ -f "$work_dir/$name" ]; then
             cp "$work_dir/$name" "${log_prefix}_${name}"
         fi

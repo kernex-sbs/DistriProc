@@ -1,0 +1,100 @@
+Config: prefetch=on adaptive=on seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=(none)
+Listening on /tmp/distriproc-bench-redis-lazy-adaptive-ij40d7/lazy-pages.socket
+Connected to page server at 127.0.0.1:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 3535
+Received userfaultfd: 3
+Started async prefetch thread
+Handling page faults...
+Async prefetch: connected to page server
+Fault 1: 0x7fc8727c1000 (prefetched 16)
+Fault 2: 0x7fc8711fe000 (prefetched 16)
+Fault 3: 0x7fc8709fd000 (prefetched 16)
+Fault 4: 0x7fc8701fc000 (prefetched 16)
+Fault 5: 0x7fc86f9fb000 (prefetched 16)
+Fault 6: 0x7fc86f1fa000 (prefetched 16)
+Fault 7: 0x7fc86e3fe000 (prefetched 16)
+Restore finished (magic received)
+Fault 8: 0x7ffdc0659000 (prefetched 16)
+Fault 9: 0x7fc86e3fd000 (prefetched 0)
+Fault 10: 0x7fc8716d9000 (prefetched 16)
+Fault 100: 0x7fc871660000 (prefetched 1)
+Policy: faults=128 hits=0 prefetched=1394 drops=0 dup=0 dup_rate=0% qdepth=11 => prefetch=on seq 16->18 stride 8->9
+Fault 200: 0x7fc862055000 (prefetched 18)
+Policy: faults=128 hits=0 prefetched=1748 drops=0 dup=0 dup_rate=0% qdepth=18 => prefetch=on seq 18->20 stride 9->10
+Fault 300: 0x7fc865264000 (prefetched 20)
+Fault 400: 0x7fc86434c000 (prefetched 2)
+Fault 500: 0x7fc86b758000 (prefetched 20)
+Fault 600: 0x7fc85eb21000 (prefetched 20)
+Policy: faults=128 hits=0 prefetched=1960 drops=0 dup=0 dup_rate=0% qdepth=20 => prefetch=on seq 20->22 stride 10->11
+Fault 700: 0x7fc85fbda000 (prefetched 22)
+Fault 800: 0x7fc865f7a000 (prefetched 22)
+Policy: faults=128 hits=0 prefetched=2068 drops=0 dup=0 dup_rate=0% qdepth=22 => prefetch=on seq 22->24 stride 11->12
+Fault 900: 0x7fc8656ce000 (prefetched 24)
+Fault 1000: 0x7fc860d18000 (prefetched 24)
+Fault 1100: 0x7fc85bdf3000 (prefetched 24)
+Fault 1200: 0x7fc860af4000 (prefetched 24)
+Fault 1300: 0x7fc86d563000 (prefetched 24)
+Fault 1400: 0x7fc8692b8000 (prefetched 10)
+Fault 1500: 0x7fc8695a0000 (prefetched 24)
+Fault 1600: 0x7fc85cf81000 (prefetched 24)
+Fault 1700: 0x7fc86890b000 (prefetched 24)
+Fault 1800: 0x7fc8681b6000 (prefetched 24)
+Fault 1900: 0x7fc86622b000 (prefetched 24)
+Fault 2000: 0x7fc866de7000 (prefetched 24)
+Policy: faults=128 hits=0 prefetched=1526 drops=0 dup=0 dup_rate=0% qdepth=20 => prefetch=on seq 24->26 stride 12->13
+Fault 2100: 0x7fc86787d000 (prefetched 26)
+Fault 2200: 0x7fc86659d000 (prefetched 25)
+Fault 2300: 0x7fc86703f000 (prefetched 12)
+Policy: faults=128 hits=0 prefetched=1567 drops=0 dup=0 dup_rate=0% qdepth=7 => prefetch=on seq 26->28 stride 13->14
+Fault 2400: 0x7fc8671d4000 (prefetched 16)
+Fault 2500: 0x7fc861699000 (prefetched 28)
+Fault 2600: 0x7fc867550000 (prefetched 28)
+Policy: faults=128 hits=0 prefetched=1501 drops=0 dup=0 dup_rate=0% qdepth=6 => prefetch=on seq 28->30 stride 14->15
+Fault 2700: 0x7fc85d32c000 (prefetched 30)
+Fault 2800: 0x7fc8665cf000 (prefetched 0)
+Policy: faults=128 hits=0 prefetched=1406 drops=0 dup=0 dup_rate=0% qdepth=0 => prefetch=on seq 30->32 stride 15->16
+Fault 2900: 0x7fc869e53000 (prefetched 32)
+Fault 3000: 0x7fc86c9a9000 (prefetched 19)
+Fault 3100: 0x7fc86b3f6000 (prefetched 21)
+Fault 3200: 0x7fc86a7e1000 (prefetched 2)
+Policy: faults=128 hits=0 prefetched=1383 drops=0 dup=0 dup_rate=0% qdepth=0 => prefetch=on seq 32->32 stride 16->16
+Fault 3300: 0x7fc86a28e000 (prefetched 2)
+Policy: faults=128 hits=0 prefetched=1307 drops=0 dup=0 dup_rate=0% qdepth=14 => prefetch=on seq 32->32 stride 16->16
+Fault 3400: 0x7fc86775c000 (prefetched 7)
+Policy: faults=128 hits=0 prefetched=1437 drops=0 dup=0 dup_rate=0% qdepth=11 => prefetch=on seq 32->32 stride 16->16
+Fault 3500: 0x7fc86d333000 (prefetched 7)
+Policy: faults=128 hits=0 prefetched=1365 drops=0 dup=0 dup_rate=0% qdepth=21 => prefetch=on seq 32->32 stride 16->16
+Fault 3600: 0x7fc863622000 (prefetched 6)
+Fault 3700: 0x7fc8623ba000 (prefetched 11)
+Policy: faults=128 hits=0 prefetched=1503 drops=0 dup=0 dup_rate=0% qdepth=32 => prefetch=on seq 32->32 stride 16->16
+Fault 3800: 0x7fc85eef5000 (prefetched 14)
+Policy: faults=128 hits=0 prefetched=1457 drops=0 dup=0 dup_rate=0% qdepth=0 => prefetch=on seq 32->32 stride 16->16
+Fault 3900: 0x7fc867d35000 (prefetched 4)
+Policy: faults=128 hits=0 prefetched=1012 drops=0 dup=0 dup_rate=0% qdepth=5 => prefetch=on seq 32->32 stride 16->16
+Fault 4000: 0x7fc864d5e000 (prefetched 4)
+Policy: faults=128 hits=0 prefetched=991 drops=0 dup=0 dup_rate=0% qdepth=8 => prefetch=on seq 32->32 stride 16->16
+Fault 4100: 0x7fc860a7f000 (prefetched 1)
+Fault 4200: 0x7fc8626d5000 (prefetched 14)
+Policy: faults=128 hits=0 prefetched=1093 drops=0 dup=0 dup_rate=0% qdepth=11 => prefetch=on seq 32->32 stride 16->16
+Fault 4300: 0x7fc863024000 (prefetched 13)
+Policy: faults=128 hits=0 prefetched=1237 drops=0 dup=0 dup_rate=0% qdepth=2 => prefetch=on seq 32->32 stride 16->16
+Fault 4400: 0x7fc85dc2c000 (prefetched 32)
+Policy: faults=128 hits=0 prefetched=1032 drops=0 dup=0 dup_rate=0% qdepth=4 => prefetch=on seq 32->32 stride 16->16
+Fault 4500: 0x7fc85dcd8000 (prefetched 32)
+Fault 4600: 0x7fc865b38000 (prefetched 5)
+Policy: faults=128 hits=0 prefetched=796 drops=0 dup=0 dup_rate=0% qdepth=32 => prefetch=on seq 32->32 stride 16->16
+Fault 4700: 0x7fc8679f4000 (prefetched 2)
+Policy: faults=128 hits=0 prefetched=737 drops=0 dup=0 dup_rate=0% qdepth=7 => prefetch=on seq 32->32 stride 16->16
+Fault 4800: 0x7fc85df43000 (prefetched 32)
+Policy: faults=128 hits=0 prefetched=914 drops=0 dup=0 dup_rate=0% qdepth=32 => prefetch=on seq 32->32 stride 16->16
+Fault 4900: 0x7fc868e64000 (prefetched 3)
+Policy: faults=128 hits=0 prefetched=806 drops=0 dup=0 dup_rate=0% qdepth=7 => prefetch=on seq 32->32 stride 16->16
+Fault 5000: 0x7fc864151000 (prefetched 3)
+Fault 5100: 0x7fc85e2b5000 (prefetched 32)
+Policy: faults=128 hits=0 prefetched=696 drops=0 dup=0 dup_rate=0% qdepth=1 => prefetch=on seq 32->32 stride 16->16
+Enqueue: 4827 calls, 4.9 ms on fault path, mean depth 1, dedup=linear
+Prefetch stats: 5181 faults, 64620 prefetched, 0 hits (0% hit rate)
+Total pages served: 68287
+Prefetch duplicates skipped: 602

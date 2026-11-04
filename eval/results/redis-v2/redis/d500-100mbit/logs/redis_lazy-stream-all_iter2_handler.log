@@ -1,0 +1,38 @@
+Config: prefetch=off adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=/home/utkarsh/Work/proc/distriProc/eval/results/redis-v2/redis/trace-a/redis.trace
+Listening on /tmp/distriproc-bench-redis-lazy-stream-all-dTHIS8/lazy-pages.socket
+Connected to page server at 127.0.0.1:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 4189342
+Received userfaultfd: 3
+Started eager fetch thread
+Handling page faults...
+Eager fetch: streaming 29794 pages + rest
+Fault 1: 0x7ffff72e1000 (prefetched 0)
+Fault 2: 0x7ffff5bfd000 (prefetched 0)
+Fault 3: 0x7ffff63fe000 (prefetched 0)
+Fault 4: 0x7ffff53fc000 (prefetched 0)
+Fault 5: 0x7ffff43fa000 (prefetched 0)
+Fault 6: 0x7ffff4bfb000 (prefetched 0)
+Fault 7: 0x7ffff35fe000 (prefetched 0)
+Restore finished (magic received)
+Fault 8: 0x55555588e000 (prefetched 0)
+Fault 9: 0x7ffff688a000 (prefetched 0)
+Fault 10: 0x7ffff6b08000 (prefetched 0)
+userfaultfd event: REMOVE 0x7fffe1ed1000-0x7fffe1ed8000
+userfaultfd event: REMOVE 0x7fffe1ec8000-0x7fffe1ece000
+Fault 100: 0x7fffe7a45000 (prefetched 0)
+Eager fetch: streamed in 9893 ms (3012 pages/s)
+Eager fetch: rest 43524/43524 pages, done at 24297 ms
+Eager fetch: installed 71924 hot pages
+Fault 200: 0x7fffe287f000 (prefetched 0)
+Fault 300: 0x7fffe8649000 (prefetched 0)
+Fault 400: 0x7fffe0cde000 (prefetched 0)
+Fault 500: 0x7fffe2e2e000 (prefetched 0)
+Fault 600: 0x7fffe7869000 (prefetched 0)
+Fault 700: 0x7fffe8d91000 (prefetched 0)
+Fault 800: 0x7fffe0fbd000 (prefetched 0)
+Fault 900: 0x7fffe2f57000 (prefetched 0)
+Stream faults: landed 766 (3575.4 ms), ahead 21 (3116.8 ms), miss 121 (18661.1 ms)
+Prefetch stats: 921 faults, 0 prefetched, 11 hits (1% hit rate)
+Total pages served: 72824

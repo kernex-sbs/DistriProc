@@ -49,10 +49,36 @@ Setup:
    - Each miss also costs about 1.1 ms more than under plain stream.
    - The loopback runs showed the same pattern: stream-all won only at
      10 Gbit.
-4. **Flow isolation reduces the shared-queue penalty but does not remove
-   it.**
-   - On loopback (a single FIFO), demand replies queued behind the stream
-     for about 225 ms each at 100 Mbit.
-   - Here, with fq_codel and BQL, the queue adds about 1.1 ms per miss.
-   - That fits the BQL limit (130 KB, about 1 ms at 1 Gbit) plus TSO
-     bursts of up to 64 KB under the qdisc.
+4. **The shared-queue penalty is far smaller on a real link.**
+   - On loopback, demand replies queued behind the stream for about
+     225 ms each at 100 Mbit.
+   - Here, streaming the rest adds about 1.1 ms per miss.
+   - That is not due to fq_codel's flow isolation: pfifo gives the same
+     result (see below).
+
+## B's qdisc does not matter: pfifo vs fq_codel (`pi-stream-pfifo/`)
+
+The same run with Pi B's eth0 root qdisc set to `pfifo limit 1000`
+(5 iterations, stream modes only). The ms/miss column is the median
+over iterations.
+
+| mode | delay | fq_codel | pfifo | ms/miss fq | ms/miss pfifo |
+|---|---:|---:|---:|---:|---:|
+| stream | 0 | 728 | 718 | 0.88 | 0.91 |
+| stream | 1000 | 1127 | 1071 | 1.58 | 1.62 |
+| stream | 2000 | 1594 | 1405 | 2.48 | 2.54 |
+| stream-all | 0 | 1145 | 1127 | 1.99 | 2.25 |
+| stream-all | 1000 | 1249 | 1178 | 2.50 | 2.63 |
+| stream-all | 2000 | 1372 | 1292 | 3.53 | 3.56 |
+
+- A FIFO qdisc does not reproduce the loopback penalty of about 225 ms per
+  miss. Stream-all's misses still cost about 1.1 ms more than plain
+  stream's, under either qdisc.
+- Likely cause, not verified: TCP Small Queues caps how much of the
+  sender's data sits in the qdisc and driver to about 1–2 ms at line rate,
+  so the qdisc discipline barely matters.
+- The large penalty on loopback probably comes from netem holding a deep
+  emulated queue. Treat the loopback FIFO numbers as an emulation artifact,
+  not as an estimate for a real link.
+- The remaining ~1.1 ms is unexplained. Candidates are that bounded queue
+  and contention in B's Python server.

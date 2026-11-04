@@ -451,6 +451,18 @@ static int64_t detect_stride(const struct fault_history *h)
 	return 0;
 }
 
+/* EAGAIN: a REMOVE/UNMAP event is pending, the kernel refused the install
+ * and left the faulter asleep. Wake it so it retries the access and faults
+ * again once the event is read; without this it sleeps forever. */
+static void wake_on_eagain(int uffd, uint64_t addr)
+{
+	if (errno != EAGAIN)
+		return;
+	struct uffdio_range r = { .start = addr, .len = PAGE_SIZE };
+	ioctl(uffd, UFFDIO_WAKE, &r);
+	errno = EAGAIN;
+}
+
 /* ── install_page: UFFDIO_COPY with EEXIST tolerance ─── */
 
 static int install_page(int uffd, uint64_t addr, void *page_buf)
@@ -465,6 +477,7 @@ static int install_page(int uffd, uint64_t addr, void *page_buf)
 	if (ioctl(uffd, UFFDIO_COPY, &uc) < 0) {
 		if (errno == EEXIST)
 			return 0;  /* already mapped — not an error */
+		wake_on_eagain(uffd, addr);
 		return -1;
 	}
 	return 0;
@@ -479,8 +492,10 @@ static int zero_or_wake(int uffd, uint64_t addr)
 	};
 	if (ioctl(uffd, UFFDIO_ZEROPAGE, &zp) == 0)
 		return 0;
-	if (errno != EEXIST)
+	if (errno != EEXIST) {
+		wake_on_eagain(uffd, addr);
 		return -1;
+	}
 	struct uffdio_range r = { .start = addr, .len = PAGE_SIZE };
 	return ioctl(uffd, UFFDIO_WAKE, &r);
 }

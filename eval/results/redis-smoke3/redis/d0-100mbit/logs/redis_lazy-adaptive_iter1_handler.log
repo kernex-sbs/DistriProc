@@ -1,0 +1,93 @@
+Config: prefetch=on adaptive=on seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=(none)
+Listening on /tmp/distriproc-bench-redis-lazy-adaptive-sylqex/lazy-pages.socket
+Connected to page server at 127.0.0.1:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 4123183
+Received userfaultfd: 3
+Started async prefetch thread
+Handling page faults...
+Async prefetch: connected to page server
+Fault 1: 0x7fcc3180c000 (prefetched 16)
+Fault 2: 0x7fcc2f9fd000 (prefetched 16)
+Fault 3: 0x7fcc301fe000 (prefetched 16)
+Fault 4: 0x7fcc2e9fb000 (prefetched 16)
+Fault 5: 0x7fcc2f1fc000 (prefetched 16)
+Fault 6: 0x7fcc2e1fa000 (prefetched 16)
+Fault 7: 0x7fcc2d3fe000 (prefetched 16)
+Restore finished (magic received)
+Fault 8: 0x7ffe2fbc7000 (prefetched 16)
+Fault 9: 0x7fcc2d3fd000 (prefetched 15)
+Fault 10: 0x7fcc306d9000 (prefetched 16)
+Fault 100: 0x7fcc307d9000 (prefetched 11)
+Fault 200: 0x7fcc20fe5000 (prefetched 16)
+Fault 300: 0x7fcc2338e000 (prefetched 16)
+Fault 400: 0x7fcc1e4d2000 (prefetched 16)
+Fault 500: 0x7fcc2a750000 (prefetched 16)
+Fault 600: 0x7fcc1b19a000 (prefetched 16)
+Fault 700: 0x7fcc1eb6d000 (prefetched 16)
+Policy: faults=128 hits=0 prefetched=1635 drops=0 dup=0 dup_rate=0% qdepth=32 => prefetch=on seq 16->18 stride 8->9
+Fault 800: 0x7fcc2caa9000 (prefetched 18)
+Fault 900: 0x7fcc24689000 (prefetched 18)
+Fault 1000: 0x7fcc1b4b6000 (prefetched 18)
+Fault 1100: 0x7fcc1f57c000 (prefetched 18)
+Fault 1200: 0x7fcc1b647000 (prefetched 18)
+userfaultfd event: REMOVE 0x7fcc1bcd8000-0x7fcc1bcd9000
+Fault 1300: 0x7fcc1bb07000 (prefetched 18)
+Fault 1400: 0x7fcc24a99000 (prefetched 18)
+Fault 1500: 0x7fcc28299000 (prefetched 18)
+Fault 1600: 0x7fcc284f7000 (prefetched 7)
+Fault 1700: 0x7fcc2a279000 (prefetched 18)
+Fault 1800: 0x7fcc26e8d000 (prefetched 18)
+Fault 1900: 0x7fcc28e81000 (prefetched 18)
+Fault 2000: 0x7fcc251fc000 (prefetched 16)
+Fault 2100: 0x7fcc2529c000 (prefetched 18)
+Policy: faults=128 hits=0 prefetched=1340 drops=0 dup=0 dup_rate=0% qdepth=18 => prefetch=on seq 18->20 stride 9->10
+Fault 2200: 0x7fcc25bf1000 (prefetched 20)
+Fault 2300: 0x7fcc254a6000 (prefetched 20)
+Fault 2400: 0x7fcc2c7c2000 (prefetched 1)
+Fault 2500: 0x7fcc2295c000 (prefetched 5)
+Fault 2600: 0x7fcc2369f000 (prefetched 20)
+Fault 2700: 0x7fcc20616000 (prefetched 3)
+Fault 2800: 0x7fcc2128e000 (prefetched 17)
+Fault 2900: 0x7fcc2551a000 (prefetched 0)
+Fault 3000: 0x7fcc268ba000 (prefetched 18)
+Fault 3100: 0x7fcc22b85000 (prefetched 20)
+Fault 3200: 0x7fcc22dae000 (prefetched 20)
+Fault 3300: 0x7fcc2c089000 (prefetched 20)
+Fault 3400: 0x7fcc2ab70000 (prefetched 20)
+Policy: faults=128 hits=0 prefetched=1165 drops=0 dup=0 dup_rate=0% qdepth=20 => prefetch=on seq 20->22 stride 10->11
+Fault 3500: 0x7fcc23401000 (prefetched 4)
+Fault 3600: 0x7fcc1c5a1000 (prefetched 22)
+Fault 3700: 0x7fcc2928d000 (prefetched 3)
+Fault 3800: 0x7fcc2bcd2000 (prefetched 8)
+Fault 3900: 0x7fcc2b797000 (prefetched 1)
+Fault 4000: 0x7fcc1e814000 (prefetched 5)
+Fault 4100: 0x7fcc1ea5c000 (prefetched 4)
+Fault 4200: 0x7fcc2c771000 (prefetched 5)
+Fault 4300: 0x7fcc24132000 (prefetched 22)
+Fault 4400: 0x7fcc1eb35000 (prefetched 9)
+Fault 4500: 0x7fcc2091a000 (prefetched 22)
+Fault 4600: 0x7fcc2288b000 (prefetched 3)
+Fault 4700: 0x7fcc2436c000 (prefetched 5)
+Fault 4800: 0x7fcc1caa0000 (prefetched 22)
+Fault 4900: 0x7fcc1cb19000 (prefetched 22)
+Policy: faults=128 hits=0 prefetched=1114 drops=0 dup=0 dup_rate=0% qdepth=13 => prefetch=on seq 22->24 stride 11->12
+Fault 5000: 0x7fcc284eb000 (prefetched 8)
+Fault 5100: 0x7fcc1d9bf000 (prefetched 13)
+Fault 5200: 0x7fcc28726000 (prefetched 17)
+Fault 5300: 0x7fcc20055000 (prefetched 9)
+Fault 5400: 0x7fcc1ed5e000 (prefetched 8)
+Fault 5500: 0x7fcc22068000 (prefetched 24)
+Policy: faults=128 hits=0 prefetched=753 drops=0 dup=0 dup_rate=0% qdepth=19 => prefetch=on seq 24->26 stride 12->13
+Fault 5600: 0x7fcc22ed4000 (prefetched 0)
+Policy: faults=128 hits=0 prefetched=910 drops=0 dup=0 dup_rate=0% qdepth=0 => prefetch=on seq 26->28 stride 13->14
+Fault 5700: 0x7fcc26da3000 (prefetched 1)
+Fault 5800: 0x7fcc230cc000 (prefetched 6)
+Policy: faults=128 hits=0 prefetched=798 drops=0 dup=0 dup_rate=0% qdepth=28 => prefetch=on seq 28->30 stride 14->15
+Fault 5900: 0x7fcc23632000 (prefetched 10)
+Fault 6000: 0x7fcc2352a000 (prefetched 5)
+Enqueue: 5677 calls, 6.6 ms on fault path, mean depth 2, dedup=linear
+Prefetch stats: 6081 faults, 62072 prefetched, 1 hits (0% hit rate)
+Total pages served: 66689
+Prefetch duplicates skipped: 1705

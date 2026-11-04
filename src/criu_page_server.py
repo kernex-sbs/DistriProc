@@ -49,6 +49,44 @@ from pycriu import images as criu_images
 PAGE_SIZE = 4096
 
 
+def _varint(buf, i):
+    v = shift = 0
+    while True:
+        b = buf[i]
+        i += 1
+        v |= (b & 0x7F) << shift
+        shift += 7
+        if b < 0x80:
+            return v, i
+
+
+def raw_image_varints(path):
+    """Varint fields of each entry of a CRIU image, decoded by hand.
+
+    CRIU >= 4.2 writes pagemap_entry.nr_pages as field 5 and leaves the old
+    field 2 (compat_nr_pages) 0; pycriu < 4.2 drops field 5, so every entry
+    looks empty. Layout: 8 magic bytes, then (u32 len, protobuf msg)*.
+    """
+    data = open(path, "rb").read()
+    out, i = [], 8
+    while i < len(data):
+        (n,) = struct.unpack_from("<I", data, i)
+        msg, i = data[i + 4:i + 4 + n], i + 4 + n
+        fields, j = {}, 0
+        while j < len(msg):
+            key, j = _varint(msg, j)
+            wt = key & 7
+            if wt == 0:
+                fields[key >> 3], j = _varint(msg, j)
+            elif wt == 2:
+                ln, j = _varint(msg, j)
+                j += ln
+            else:
+                j += 8 if wt == 1 else 4
+        out.append(fields)
+    return out
+
+
 def build_page_map(images_dir):
     """Parse pagemap-*.img files and build vaddr -> (pages_file, file_offset) map.
 
@@ -77,9 +115,13 @@ def build_page_map(images_dir):
 
         # Walk entries (skip first entry which is the header)
         file_offset = 0
-        for entry in pm["entries"][1:]:
+        raw = None
+        for k, entry in enumerate(pm["entries"][1:], 1):
             vaddr = entry["vaddr"]
             nr_pages = entry.get("nr_pages", entry.get("compat_nr_pages", 1))
+            if nr_pages == 0:  # old pycriu on a CRIU >= 4.2 image
+                raw = raw or raw_image_varints(pmf)
+                nr_pages = raw[k].get(5, 0)
 
             # If pages are in parent image, skip (no data in this pages file)
             if entry.get("in_parent", False):

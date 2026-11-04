@@ -5,11 +5,11 @@
 # the loopback runs. Only the transport changes, so TTFR stays comparable.
 #
 # Topology:
-#   A (this host): criu restore --lazy-pages + lazy_handler + pytorch workload
+#   A (this host): criu restore --lazy-pages + lazy_handler + workload (WORKLOAD)
 #   B (PAGE_SERVER_SSH): criu_page_server.py bound to 0.0.0.0, serving over LAN
 #
 # This is intentionally standalone (it does NOT touch bench.sh) so the validated
-# loopback harness cannot regress. It reuses lib.sh helpers and the pytorch
+# loopback harness cannot regress. It reuses lib.sh helpers and the eval/workloads
 # workload functions.
 #
 # Prereqs (see REPRODUCE-2machine.md):
@@ -40,9 +40,14 @@
 #                     the data bottleneck, keeps its own qdisc.
 #   IFACE             A's interface to B          (default: eth0)
 #
+#   WORKLOAD          eval/workloads/<name>.sh    (default: pytorch)
+#   NO_THROUGHPUT     set to skip the throughput step (see bench.sh)
+#
 # Extra modes: full (local images), full-net (stream images B->A, then full
 # restore), lazy-stream / -pf / -all (stream a demand-fault trace recorded
-# twice at delay 0 before the loop; trace-a is used, trace-b checks stability).
+# twice at delay 0 before the loop; trace-a is used, trace-b checks stability),
+# lazy-stream-same (trace recorded on an untimed first restore of the same
+# image, then streamed on a second restore: REAP-style upper bound).
 
 set -euo pipefail
 
@@ -67,9 +72,10 @@ fi
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
 # ── Shared harness + workload ─────────────────────────────────────────────────
-SCRIPT_DIR="$ROOT_DIR/eval"          # pytorch.sh expects SCRIPT_DIR/workloads/...
+SCRIPT_DIR="$ROOT_DIR/eval"          # workloads expect SCRIPT_DIR/workloads/...
+WORKLOAD="${WORKLOAD:-pytorch}"
 source "$SCRIPT_DIR/lib.sh"
-source "$SCRIPT_DIR/workloads/pytorch.sh"
+source "$SCRIPT_DIR/workloads/$WORKLOAD.sh"
 
 # ── Config ────────────────────────────────────────────────────────────────────
 : "${PAGE_SERVER_SSH:?set PAGE_SERVER_SSH=user@B_LAN_IP}"
@@ -100,6 +106,7 @@ handler_args() {  # mode -> lazy_handler flags
         lazy-record)   echo "--no-prefetch" ;;
         lazy-stream|lazy-stream-all) echo "--no-prefetch --hot-pages $TRACE" ;;
         lazy-stream-pf) echo "--prefetch-seq 16 --prefetch-stride 8 --hot-pages $TRACE" ;;
+        lazy-stream-same) echo "--no-prefetch --hot-pages $work_dir/same.trace" ;;  # run_one's local
         *) echo "ERROR: unknown mode $1" >&2; return 1 ;;
     esac
 }
@@ -178,7 +185,7 @@ run_one() {  # $1=mode $2=iteration $3=delay_us; env DISTRIPROC_TCP_NODELAY
     local tag="${mode}_nd${nd}_d${delay}_iter${iter}"
     local work_dir handler_pid="" restored_pid="" stats="-1,-1,-1,-1,-1,0"
     work_dir=$(mktemp -d "/tmp/distriproc-2m-${mode}-XXXXXX")
-    log_info "[pytorch/$mode/nd$nd/d$delay] iter $iter"
+    log_info "[$WORKLOAD/$mode/nd$nd/d$delay] iter $iter"
 
     WL_LAUNCH=""
     case "$mode" in lazy-record|lazy-stream*) WL_LAUNCH="setarch -R" ;; esac
@@ -194,7 +201,7 @@ run_one() {  # $1=mode $2=iteration $3=delay_us; env DISTRIPROC_TCP_NODELAY
         restored_pid=$(criu_restore_full "$work_dir")
     else
         if ! start_remote_server "$work_dir"; then
-            log_error "[pytorch/$mode] iter $iter: skipping (server failed)"
+            log_error "[$WORKLOAD/$mode] iter $iter: skipping (server failed)"
             rm -rf "$work_dir"; stop_remote_server; return 0
         fi
         if [ "$mode" = "full-net" ]; then
@@ -204,6 +211,21 @@ run_one() {  # $1=mode $2=iteration $3=delay_us; env DISTRIPROC_TCP_NODELAY
             restored_pid=$(criu_restore_full "$work_dir/net-images")
             cp "$work_dir/net-images/restore.log" "$work_dir/" 2>/dev/null || true
         else
+            if [ "$mode" = "lazy-stream-same" ]; then  # untimed record pass, same image
+                local rpid hpid
+                hpid=$(DISTRIPROC_TRACE="$work_dir/same.trace" \
+                    start_lazy_handler "$work_dir" "$PAGE_SERVER_HOST" "$PORT" --no-prefetch)
+                RESTORE_T_START=$(time_ms); rpid=$(criu_restore_lazy "$work_dir")
+                TTFR_MS=0; workload_ttfr_probe "$work_dir" || true
+                log_info "[$WORKLOAD/$mode/nd$nd/d$delay] iter $iter record pass TTFR=${TTFR_MS}ms"
+                kill -9 "$rpid" 2>/dev/null || true; kill "$hpid" 2>/dev/null || true
+                for _ in $(seq 50); do
+                    kill -0 "$hpid" 2>/dev/null || kill -0 "$rpid" 2>/dev/null || break; sleep 0.2
+                done
+                kill -9 "$hpid" 2>/dev/null || true
+                mv "$work_dir/handler.log" "$work_dir/record_handler.log"
+                rm -f "$work_dir/restore.pid"  # CRIU 4.2 won't overwrite a pidfile
+            fi
             local args rest=0 trace_env=""
             args=$(handler_args "$mode")
             [ "$mode" = "lazy-stream-all" ] && rest=1
@@ -218,11 +240,11 @@ run_one() {  # $1=mode $2=iteration $3=delay_us; env DISTRIPROC_TCP_NODELAY
 
     TTFR_MS=0; workload_ttfr_probe "$work_dir" || true; local ttfr_ms="$TTFR_MS"
     if [ "$ttfr_ms" = "-1" ]; then
-        log_warn "[pytorch/$mode] iter $iter probe FAILED: restored pid=$restored_pid"
+        log_warn "[$WORKLOAD/$mode] iter $iter probe FAILED: restored pid=$restored_pid"
         tail -15 "$work_dir/restore.log" >&2 2>/dev/null || true
     fi
-    THROUGHPUT=0; workload_throughput || true
-    log_info "[pytorch/$mode/nd$nd/d$delay] iter $iter TTFR=${ttfr_ms}ms"
+    THROUGHPUT=0; [ -n "${NO_THROUGHPUT:-}" ] || workload_throughput || true
+    log_info "[$WORKLOAD/$mode/nd$nd/d$delay] iter $iter TTFR=${ttfr_ms}ms"
 
     [ -n "$restored_pid" ] && kill -9 "$restored_pid" 2>/dev/null || true
     if [ -n "$handler_pid" ]; then
@@ -235,11 +257,11 @@ run_one() {  # $1=mode $2=iteration $3=delay_us; env DISTRIPROC_TCP_NODELAY
     fi
     ssh "$PAGE_SERVER_SSH" "cat '$REMOTE_WORK/page_server.log'" > "$work_dir/page_server.log" 2>/dev/null || true
     stop_remote_server
-    for lg in handler page_server; do
-        cp "$work_dir/$lg.log" "$OUT_DIR/pytorch_${tag}_${lg}.log" 2>/dev/null || true
+    for lg in handler record_handler page_server; do
+        cp "$work_dir/$lg.log" "$OUT_DIR/${WORKLOAD}_${tag}_${lg}.log" 2>/dev/null || true
     done
 
-    csv_append "$CSV" "pytorch,${mode},${iter},${ttfr_ms},${THROUGHPUT},${stats},${checkpoint_ms},$((RTT_US + delay)),${nd},${delay}"
+    csv_append "$CSV" "${WORKLOAD},${mode},${iter},${ttfr_ms},${THROUGHPUT},${stats},${checkpoint_ms},$((RTT_US + delay)),${nd},${delay}"
     workload_cleanup
     rm -rf "$work_dir"
 }

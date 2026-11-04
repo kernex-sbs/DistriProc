@@ -1,0 +1,4 @@
+workload,mode,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms
+redis,full,1,254,0,0,0,0,0,0,0,209
+redis,full-net,1,22347,0,0,0,0,0,0,0,218
+redis,lazy-prefetch,1,-1,0,1197,14663,0,0,15504,0,235

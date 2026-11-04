@@ -1,0 +1,48 @@
+Config: prefetch=off adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=/home/utkarsh/Work/proc/distriProc/eval/results/redis-v2/redis/trace-a/redis.trace
+Listening on /tmp/distriproc-bench-redis-lazy-stream-all-LyWkC9/lazy-pages.socket
+Connected to page server at 127.0.0.1:9999
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 4152971
+Received userfaultfd: 3
+Started eager fetch thread
+Handling page faults...
+Eager fetch: streaming 29794 pages + rest
+Fault 1: 0x7ffff72e1000 (prefetched 0)
+Fault 2: 0x7ffff63fe000 (prefetched 0)
+Fault 3: 0x7ffff5bfd000 (prefetched 0)
+Fault 4: 0x7ffff4bfb000 (prefetched 0)
+Fault 5: 0x7ffff53fc000 (prefetched 0)
+Fault 6: 0x7ffff43fa000 (prefetched 0)
+Fault 7: 0x7ffff35fe000 (prefetched 0)
+Restore finished (magic received)
+Fault 8: 0x7ffff6895000 (prefetched 0)
+Fault 9: 0x7ffff3775000 (prefetched 0)
+Fault 10: 0x7ffff3970000 (prefetched 0)
+userfaultfd event: REMOVE 0x7fffe1ed7000-0x7fffe1ed8000
+userfaultfd event: REMOVE 0x7fffe1ec8000-0x7fffe1ece000
+Fault 100: 0x7fffe4f3a000 (prefetched 0)
+Eager fetch: streamed in 9866 ms (3020 pages/s)
+Eager fetch: rest 43156/43156 pages, done at 24121 ms
+Eager fetch: installed 70502 hot pages
+Fault 200: 0x7fffef4bf000 (prefetched 0)
+Fault 300: 0x7fffef4de000 (prefetched 0)
+Fault 400: 0x7fffea884000 (prefetched 0)
+Fault 500: 0x7fffea8b7000 (prefetched 0)
+Fault 600: 0x7fffe0b47000 (prefetched 0)
+Fault 700: 0x7fffea99a000 (prefetched 0)
+Fault 800: 0x7fffe76e3000 (prefetched 0)
+Fault 900: 0x7ffff264d000 (prefetched 0)
+Fault 1000: 0x7fffef598000 (prefetched 0)
+Fault 1100: 0x7fffe2e18000 (prefetched 0)
+Fault 1200: 0x7fffe8daf000 (prefetched 0)
+Fault 1300: 0x7fffe4171000 (prefetched 0)
+Fault 1400: 0x7fffee900000 (prefetched 0)
+Fault 1500: 0x7fffe2e83000 (prefetched 0)
+Fault 1600: 0x7fffe4661000 (prefetched 0)
+Fault 1700: 0x7fffef664000 (prefetched 0)
+Fault 1800: 0x7fffe6f10000 (prefetched 0)
+Fault 1900: 0x7fffeabbf000 (prefetched 0)
+Stream faults: landed 1833 (3739.0 ms), ahead 13 (1380.8 ms), miss 131 (19674.4 ms)
+Prefetch stats: 1984 faults, 0 prefetched, 5 hits (0% hit rate)
+Total pages served: 72475
