@@ -1,0 +1,26 @@
+Config: prefetch=off adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=/tmp/distriproc-bench-pytorch-lazy-stream-same-Da0DJ3/same.trace
+Listening on /tmp/distriproc-bench-pytorch-lazy-stream-same-Da0DJ3/lazy-pages.socket
+Connected to page server at 127.0.0.1:9998
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 141370
+Received userfaultfd: 3
+Started eager fetch thread
+Handling page faults...
+Eager fetch: streaming 15481 pages
+Fault 1: 0x7fff9fcc3000 (prefetched 0)
+Fault 2: 0x7fff9f4c2000 (prefetched 0)
+Fault 3: 0x7fff9ecc1000 (prefetched 0)
+Fault 4: 0x7fff9e4c0000 (prefetched 0)
+Fault 5: 0x7fff9dcbf000 (prefetched 0)
+Fault 6: 0x7fff9ccbd000 (prefetched 0)
+Fault 7: 0x7fff9d4be000 (prefetched 0)
+Restore finished (magic received)
+Fault 8: 0x7fffa26ec000 (prefetched 0)
+Fault 9: 0x7fffa26ee000 (prefetched 0)
+Fault 10: 0x7fffa2678000 (prefetched 0)
+Eager fetch: streamed in 63 ms (244318 pages/s)
+Eager fetch: installed 15462 hot pages
+Stream faults: landed 21 (23.2 ms), ahead 4 (3.9 ms), miss 0 (0.0 ms)
+Prefetch stats: 25 faults, 0 prefetched, 0 hits (0% hit rate)
+Total pages served: 15481

@@ -191,6 +191,8 @@ run_iteration() {
         port=$(find_available_port 9999)
         page_server_pid=$(start_page_server "$work_dir" "$port")
         handler_pid=$(DISTRIPROC_TRACE="$trace_file" start_lazy_handler "$work_dir" "127.0.0.1" "$port" --no-prefetch)
+        # CRIU checks the size of files the process has open (its stdout log)
+        wl_size=$(stat -c %s "$work_dir/workload.log")
         RESTORE_T_START=$(time_ms)
         restored_pid=$(criu_restore_lazy "$work_dir")
         workload_ttfr_probe "$work_dir" || true
@@ -205,6 +207,7 @@ run_iteration() {
         kill -9 "$handler_pid" 2>/dev/null || true
         mv "$work_dir/handler.log" "$work_dir/record_handler.log"
         rm -f "$work_dir/restore.pid"  # CRIU 4.2 won't overwrite a pidfile
+        truncate -s "$wl_size" "$work_dir/workload.log"
         [ -s "$trace_file" ] || { log_error "record pass left no trace"; return 1; }
         if declare -F workload_pre_restore >/dev/null; then
             workload_pre_restore "$work_dir"

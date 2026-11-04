@@ -1,0 +1,2 @@
+workload,mode,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms
+pytorch,lazy-record,1,629,0,15479,0,0,0,15479,0,220

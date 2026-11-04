@@ -58,7 +58,45 @@ one 8 B request per page. Diagnostics (`stream-diag`) found three costs:
   against a fourth run. Every run allocates some fresh heap.
 - **Traces recorded on earlier runs therefore have an irreducible miss
   set.** A same-image trace (REAP-style, recorded on the first restore of
-  this image) would not have this problem; it remains to be measured.
+  this image) does not have this problem; see below.
+
+## Same-image traces: lazy-stream-same (`pytorch-same/`, 5 iterations)
+
+Each iteration dumps, runs an untimed record pass (plain lazy restore
+with tracing), then restores the same image again, streaming that trace.
+Faults are the medians of the "ahead" and "miss" classes.
+
+| RTT µs | rate | best old | best stream | stream-same | ahead / miss | vs old | vs stream |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| 0 | 100mbit | 6278 lazy | 5274 | **5129** ±34 | 31 / 0 | 1.22× | 1.03× |
+| 0 | 1gbit | 873 prefetch | 585 | **546** ±3 | 25 / 0 | 1.60× | 1.07× |
+| 0 | 10gbit | 335 prefetch | 129 | **93** ±6 | 0 / 0 | 3.60× | 1.39× |
+| 200 | 100mbit | 7855 prefetch | 5292 | **5136** ±33 | 27 / 1 | 1.53× | 1.03× |
+| 200 | 1gbit | 1134 adaptive | 682 | **544** ±5 | 24 / 0 | 2.08× | 1.25× |
+| 200 | 10gbit | 521 full-net | 163 | **92** ±4 | 11 / 0 | 5.66× | 1.77× |
+| 1000 | 100mbit | 9005 prefetch | 5751 | **5130** ±8 | 28 / 2 | 1.76× | 1.12× |
+| 1000 | 1gbit | 2286 adaptive | 820 | **554** ±4 | 21 / 2 | 4.13× | 1.48× |
+| 1000 | 10gbit | 549 full-net | 249 | **99** ±7 | 17 / 3 | 5.55× | 2.52× |
+| 2000 | 100mbit | 10464 adaptive | 5679 | **5147** ±9 | 28 / 4 | 2.03× | 1.10× |
+| 2000 | 1gbit | 2982 full-net | 1028 | **561** ±2 | 22 / 4 | 5.32× | 1.83× |
+| 2000 | 10gbit | 627 full-net | 338 | **109** ±3 | 18 / 4 | 5.75× | 3.10× |
+
+- stream-same wins all 12 cells: 1.22–5.75× over the best old policy and
+  1.03–3.10× over the best cross-run stream mode.
+- Misses drop from hundreds to 0–4. TTFR is nearly flat in RTT (93 →
+  109 ms at 10 Gbit, 546 → 561 ms at 1 Gbit) and tracks bandwidth: the
+  ~63 MB working set takes about 5.1 s at 100 Mbit.
+- The gain over cross-run streaming grows with bandwidth × RTT, where
+  misses (one RTT each) dominate. At 100 Mbit the stream itself is the
+  cost and the trace source barely matters (1.03–1.12×).
+- Record-pass cost (median, untimed): 6.3 / 1.3 / 0.8 s at RTT 0;
+  9.4 / 4.5 / 3.9 s at 200 µs; 21.8 / 17.1 / 16.6 s at 1 ms; 37.6 /
+  32.6 / 32.2 s at 2 ms (100 Mbit / 1 Gbit / 10 Gbit). It needs
+  `PT_PROBE_TIMEOUT_S=300`.
+- Harness fix this needed: the record pass appends to the process's
+  stdout log, and CRIU refuses to restore an open file whose size changed
+  ("has bad size 44 (expect 18)"). Both harnesses truncate `workload.log`
+  back to its dump-time size between the passes.
 
 ## Covering misses with the rest of the image: the FIFO bottleneck
 

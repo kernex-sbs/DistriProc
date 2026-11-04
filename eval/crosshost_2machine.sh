@@ -212,7 +212,9 @@ run_one() {  # $1=mode $2=iteration $3=delay_us; env DISTRIPROC_TCP_NODELAY
             cp "$work_dir/net-images/restore.log" "$work_dir/" 2>/dev/null || true
         else
             if [ "$mode" = "lazy-stream-same" ]; then  # untimed record pass, same image
-                local rpid hpid
+                local rpid hpid wl_size
+                # CRIU checks the size of files the process has open (its stdout log)
+                wl_size=$(stat -c %s "$work_dir/workload.log")
                 hpid=$(DISTRIPROC_TRACE="$work_dir/same.trace" \
                     start_lazy_handler "$work_dir" "$PAGE_SERVER_HOST" "$PORT" --no-prefetch)
                 RESTORE_T_START=$(time_ms); rpid=$(criu_restore_lazy "$work_dir")
@@ -225,6 +227,7 @@ run_one() {  # $1=mode $2=iteration $3=delay_us; env DISTRIPROC_TCP_NODELAY
                 kill -9 "$hpid" 2>/dev/null || true
                 mv "$work_dir/handler.log" "$work_dir/record_handler.log"
                 rm -f "$work_dir/restore.pid"  # CRIU 4.2 won't overwrite a pidfile
+                truncate -s "$wl_size" "$work_dir/workload.log"
             fi
             local args rest=0 trace_env=""
             args=$(handler_args "$mode")

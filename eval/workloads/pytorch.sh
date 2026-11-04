@@ -70,7 +70,9 @@ workload_ttfr_probe() {
     # Send trigger
     touch "$_PT_TRIGGER_FILE"
 
-    local deadline=$(( $(date +%s) + 30 ))
+    # PT_PROBE_TIMEOUT_S: a demand-only lazy restore (the lazy-stream-same
+    # record pass) needs minutes at multi-ms RTT
+    local deadline=$(( $(date +%s) + ${PT_PROBE_TIMEOUT_S:-30} ))
     while [ "$(date +%s)" -lt "$deadline" ]; do
         if [ -s "$_PT_RESULT_FILE" ]; then
             TTFR_MS=$(( $(time_ms) - RESTORE_T_START ))
