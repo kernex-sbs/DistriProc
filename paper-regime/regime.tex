@@ -1,6 +1,6 @@
 %% ============================================================================
 %%  Lazy or Eager? When Post-Copy Process Restore Pays over a Network, and
-%%  Streaming the Working Set.  IEEEtran conference format (venue TBD).
+%%  Streaming the Working Set.  IEEEtran conference format.
 %%  Build: pdflatex regime && bibtex regime && pdflatex regime && pdflatex regime
 %%  Data: eval/results/{regime,regime-stream,pytorch-same,redis-v2,redis-same,
 %%        webapp,pi-stream,pi-stream-pfifo,pi-pytorch-same,pi-redis,pi-webapp,
@@ -841,7 +841,9 @@ keeps serving: streaming the rest of the image behind it keeps most of the
 TTFR gain and serves the following load sooner than eager restore.
 
 \section*{Artifact Availability}
-Code, harnesses and raw results are in the DistriProc repository
+Code, harnesses and raw results are in the DistriProc repository,
+tag \texttt{regime-v1}:
+\url{https://github.com/kernex-sbs/DistriProc/tree/regime-v1}
 (\texttt{src/}, \texttt{eval/}); each table names its result directories
 under \texttt{eval/results/}.
 
