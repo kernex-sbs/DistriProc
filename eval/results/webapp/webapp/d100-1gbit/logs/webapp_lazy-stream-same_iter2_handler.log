@@ -1,0 +1,26 @@
+Config: prefetch=off adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=/tmp/distriproc-bench-webapp-lazy-stream-same-y8B1vn/same.trace
+Listening on /tmp/distriproc-bench-webapp-lazy-stream-same-y8B1vn/lazy-pages.socket
+Connected to page server at 127.0.0.1:9998
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 395313
+Received userfaultfd: 3
+Started eager fetch thread
+Handling page faults...
+Eager fetch: streaming 26608 pages
+Fault 1: 0x7ffff7f77000 (prefetched 0)
+Restore finished (magic received)
+Fault 2: 0x555555644000 (prefetched 0)
+Fault 3: 0x55555f6cb000 (prefetched 0)
+Fault 4: 0x7ffff5f20000 (prefetched 0)
+Fault 5: 0x7ffff596c000 (prefetched 0)
+Fault 6: 0x7ffff5b1c000 (prefetched 0)
+Fault 7: 0x555556395000 (prefetched 0)
+Fault 8: 0x7ffff43e8000 (prefetched 0)
+Fault 9: 0x7ffff5587000 (prefetched 0)
+Fault 10: 0x555558814000 (prefetched 0)
+Eager fetch: streamed in 883 ms (30138 pages/s)
+Eager fetch: installed 26607 hot pages
+Stream faults: landed 0 (0.0 ms), ahead 39 (855.4 ms), miss 0 (0.0 ms)
+Prefetch stats: 39 faults, 0 prefetched, 0 hits (0% hit rate)
+Total pages served: 26608

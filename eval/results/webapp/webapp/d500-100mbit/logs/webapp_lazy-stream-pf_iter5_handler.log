@@ -1,0 +1,40 @@
+Config: prefetch=on adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=/home/utkarsh/Work/proc/distriProc/eval/results/webapp/webapp/trace-a/webapp.trace
+Listening on /tmp/distriproc-bench-webapp-lazy-stream-pf-NdPl9N/lazy-pages.socket
+Connected to page server at 127.0.0.1:9998
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 420507
+Received userfaultfd: 3
+Started async prefetch thread
+Async prefetch: connected to page server
+Started eager fetch thread
+Handling page faults...
+Eager fetch: streaming 26613 pages
+Fault 1: 0x7ffff7f77000 (prefetched 0)
+Restore finished (magic received)
+Fault 2: 0x7fffffffd000 (prefetched 0)
+Fault 3: 0x7ffff7f78000 (prefetched 0)
+Fault 4: 0x7ffff7621000 (prefetched 0)
+Fault 5: 0x7ffff548a000 (prefetched 0)
+Fault 6: 0x7ffff7380000 (prefetched 0)
+Fault 7: 0x7ffff5e8c000 (prefetched 16)
+Fault 8: 0x7ffff5e8d000 (prefetched 0)
+Fault 9: 0x7ffff5e7a000 (prefetched 0)
+Fault 10: 0x555555569000 (prefetched 0)
+Eager fetch: streamed in 8878 ms (2998 pages/s)
+Eager fetch: installed 26592 hot pages
+Fault 100: 0x7ffff5d40000 (prefetched 2)
+Fault 200: 0x55555c780000 (prefetched 4)
+Fault 300: 0x55555c7cc000 (prefetched 5)
+Fault 400: 0x555558505000 (prefetched 4)
+Fault 500: 0x555558d16000 (prefetched 6)
+Fault 600: 0x5555596df000 (prefetched 5)
+Fault 700: 0x55555c53a000 (prefetched 5)
+Fault 800: 0x5555563c9000 (prefetched 8)
+Fault 900: 0x555555cfb000 (prefetched 6)
+Fault 1000: 0x55555c398000 (prefetched 5)
+Enqueue: 971 calls, 1.0 ms on fault path, mean depth 0, dedup=linear
+Stream faults: landed 0 (0.0 ms), ahead 14 (1755.4 ms), miss 990 (10263.8 ms)
+Prefetch stats: 1004 faults, 6887 prefetched, 0 hits (0% hit rate)
+Total pages served: 34467
+Prefetch duplicates skipped: 10

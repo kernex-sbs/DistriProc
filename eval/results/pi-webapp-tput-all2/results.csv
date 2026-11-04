@@ -1,0 +1,13 @@
+workload,mode,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms,rtt_us,tcp_nodelay,delay_us
+webapp,lazy-record,rec-a,4736,0,26595,0,0,0,26595,0,198,157,1,0
+webapp,lazy-record,rec-b,4703,0,26595,0,0,0,26595,0,198,157,1,0
+webapp,lazy-stream-all,1,1067,497,876,0,0,0,63008,62282,196,157,1,0
+webapp,lazy-stream-all,1,1101,491,533,0,0,0,63004,62485,196,2157,1,2000
+webapp,lazy-stream-all,2,1049,498,838,0,0,0,63004,62271,208,157,1,0
+webapp,lazy-stream-all,2,1132,498,517,0,0,0,63004,62495,196,2157,1,2000
+webapp,lazy-stream-all,3,1041,497,831,0,0,0,63004,62271,200,157,1,0
+webapp,lazy-stream-all,3,1155,517,519,0,0,0,63004,62491,203,2157,1,2000
+webapp,lazy-stream-all,4,1042,496,873,0,0,0,63004,62259,199,157,1,0
+webapp,lazy-stream-all,4,1134,496,522,0,0,0,63004,62489,198,2157,1,2000
+webapp,lazy-stream-all,5,1045,495,843,0,0,0,63008,62300,204,157,1,0
+webapp,lazy-stream-all,5,1157,505,515,0,0,0,63004,62496,199,2157,1,2000

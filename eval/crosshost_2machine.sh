@@ -246,7 +246,8 @@ run_one() {  # $1=mode $2=iteration $3=delay_us; env DISTRIPROC_TCP_NODELAY
         log_warn "[$WORKLOAD/$mode] iter $iter probe FAILED: restored pid=$restored_pid"
         tail -15 "$work_dir/restore.log" >&2 2>/dev/null || true
     fi
-    THROUGHPUT=0; [ -n "${NO_THROUGHPUT:-}" ] || workload_throughput || true
+    # a record run never measures it: the trace must stop at the first response
+    THROUGHPUT=0; [ -n "${NO_THROUGHPUT:-}" ] || [ "$mode" = lazy-record ] || workload_throughput || true
     log_info "[$WORKLOAD/$mode/nd$nd/d$delay] iter $iter TTFR=${ttfr_ms}ms"
 
     [ -n "$restored_pid" ] && kill -9 "$restored_pid" 2>/dev/null || true

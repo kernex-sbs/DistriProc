@@ -1,0 +1,26 @@
+Config: prefetch=off adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=/home/utkarsh/Work/proc/distriProc/eval/results/webapp/webapp/trace-a/webapp.trace
+Listening on /tmp/distriproc-bench-webapp-lazy-stream-GKnATY/lazy-pages.socket
+Connected to page server at 127.0.0.1:9998
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 391428
+Received userfaultfd: 3
+Started eager fetch thread
+Handling page faults...
+Eager fetch: streaming 26613 pages
+Fault 1: 0x7ffff7f77000 (prefetched 0)
+Restore finished (magic received)
+Fault 2: 0x7ffff5e8c000 (prefetched 0)
+Fault 3: 0x7ffff5e8d000 (prefetched 0)
+Fault 4: 0x7ffff6eb6000 (prefetched 0)
+Fault 5: 0x7ffff6ef9000 (prefetched 0)
+Fault 6: 0x7ffff6efc000 (prefetched 0)
+Fault 7: 0x7ffff6f6c000 (prefetched 0)
+Fault 8: 0x7ffff6f6d000 (prefetched 0)
+Fault 9: 0x7ffff73df000 (prefetched 0)
+Fault 10: 0x7ffff6ed8000 (prefetched 0)
+Eager fetch: streamed in 884 ms (30118 pages/s)
+Eager fetch: installed 26609 hot pages
+Stream faults: landed 0 (0.0 ms), ahead 5 (81.4 ms), miss 56 (757.3 ms)
+Prefetch stats: 61 faults, 0 prefetched, 0 hits (0% hit rate)
+Total pages served: 26669

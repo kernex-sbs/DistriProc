@@ -1,0 +1,4 @@
+workload,mode,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms,rtt_us,tcp_nodelay,delay_us
+pytorch,lazy-record,rec-a,2588,0,21903,0,4645,21,17258,0,256,162,1,0
+pytorch,lazy-record,rec-b,2591,0,22814,0,5536,24,17278,0,250,162,1,0
+pytorch,lazy-stream-same,1,563,0,4924,0,2248,45,17238,14677,243,162,1,0

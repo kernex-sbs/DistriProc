@@ -1,0 +1,6 @@
+workload,mode,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms,rtt_us,tcp_nodelay,delay_us
+webapp,lazy-record,rec-a,4721,0,26616,0,0,0,26616,0,190,155,1,0
+webapp,lazy-record,rec-b,4721,0,26613,0,0,0,26613,0,196,155,1,0
+webapp,full-net,1,2596,0,-1,-1,-1,-1,-1,0,194,155,1,0
+webapp,lazy-stream,1,966,0,399,0,0,0,26686,26557,190,155,1,0
+webapp,lazy-stream-same,1,972,0,399,0,0,0,26622,26621,203,155,1,0

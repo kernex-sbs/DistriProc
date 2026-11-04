@@ -82,3 +82,23 @@ over iterations.
   not as an estimate for a real link.
 - The remaining ~1.1 ms is unexplained. Candidates are that bounded queue
   and contention in B's Python server.
+
+## Same-image traces: lazy-stream-same (`pi-pytorch-same/`, 2026-11-04)
+
+Same setup, but CRIU 4.2.1 (the runs above used 4.1.1). full-net and
+stream-pf were rerun as anchors; both land within 6% of the 4.1.1 numbers,
+so the CRIU version does not move the result. 5 iterations, median TTFR in
+ms (± population sd). Cross-run trace overlap this time: 96.2%.
+
+| mode | RTT 0.16 ms | 1.16 ms | 2.16 ms |
+|---|---:|---:|---:|
+| full-net | 2937 ±16 | 2942 ±12 | 2952 ±12 |
+| stream-pf | 740 ±33 | 906 ±37 | 1082 ±24 |
+| **stream-same** | **561** ±5 | **597** ±42 | **617** ±34 |
+| vs best old (table above) | 1.82× | 4.30× | 4.78× |
+| vs stream-pf | 1.32× | 1.52× | 1.75× |
+
+- Misses fall to 13–18 per run (stream-pf: 286–498).
+- The trace is 14.8k pages (61 MB, about 0.49 s at line rate); stream-same
+  is 15–27% above that.
+- Record pass (untimed): 2.6 s, 17.8 s and 32.5 s.

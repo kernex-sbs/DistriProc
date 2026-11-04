@@ -1,0 +1,10 @@
+workload,mode,rtt_us,rate,iteration,ttfr_ms,throughput_ops_sec,page_faults,pages_prefetched,prefetch_hits,hit_rate_pct,total_pages_served,eager_pages,checkpoint_time_ms
+webapp,full,0,1gbit,1,247,0,0,0,0,0,0,0,166
+webapp,full-net,0,1gbit,1,2373,0,0,0,0,0,0,0,165
+webapp,lazy-prefetch,0,1gbit,1,2173,0,8461,41631,0,0,49560,0,163
+webapp,lazy-adaptive,0,1gbit,1,2206,0,7400,45099,0,0,51977,0,174
+webapp,lazy-stream,0,1gbit,1,1008,0,127,0,0,0,26719,26593,173
+webapp,lazy-stream-pf,0,1gbit,1,1222,0,919,6176,0,0,33652,26579,167
+webapp,lazy-stream-all,0,1gbit,1,2027,0,84,0,0,0,59678,59602,162
+webapp,lazy-stream-same,0,1gbit,1,912,0,124,0,0,0,26593,26515,165
+webapp,lazy,0,1gbit,1,2679,0,26560,0,0,0,26560,0,171

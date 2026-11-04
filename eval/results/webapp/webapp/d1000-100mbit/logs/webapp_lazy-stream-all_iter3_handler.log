@@ -1,0 +1,28 @@
+Config: prefetch=off adaptive=off seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=/home/utkarsh/Work/proc/distriProc/eval/results/webapp/webapp/trace-a/webapp.trace
+Listening on /tmp/distriproc-bench-webapp-lazy-stream-all-yOK4IN/lazy-pages.socket
+Connected to page server at 127.0.0.1:9998
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 459356
+Received userfaultfd: 3
+Started eager fetch thread
+Handling page faults...
+Eager fetch: streaming 26613 pages + rest
+Fault 1: 0x7ffff7f77000 (prefetched 0)
+Restore finished (magic received)
+Fault 2: 0x7fffffffd000 (prefetched 0)
+Fault 3: 0x7ffff7f78000 (prefetched 0)
+Fault 4: 0x7ffff7621000 (prefetched 0)
+Fault 5: 0x7ffff548a000 (prefetched 0)
+Fault 6: 0x7ffff7380000 (prefetched 0)
+Fault 7: 0x7ffff5e8c000 (prefetched 0)
+Fault 8: 0x7ffff5e8d000 (prefetched 0)
+Fault 9: 0x55555576d000 (prefetched 0)
+Fault 10: 0x7ffff6eb6000 (prefetched 0)
+eager recv: No such process
+Eager fetch: streamed in 8853 ms (3006 pages/s)
+Eager fetch: rest 19487/37103 pages, done at 15309 ms
+Eager fetch: installed 43015 hot pages
+Stream faults: landed 0 (0.0 ms), ahead 15 (1704.2 ms), miss 46 (12484.5 ms)
+Prefetch stats: 61 faults, 0 prefetched, 0 hits (0% hit rate)
+Total pages served: 43072

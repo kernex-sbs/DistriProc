@@ -2,8 +2,9 @@
 %%  Lazy or Eager? When Post-Copy Process Restore Pays over a Network, and
 %%  Streaming the Working Set.  IEEEtran conference format (venue TBD).
 %%  Build: pdflatex regime && bibtex regime && pdflatex regime && pdflatex regime
-%%  Data: eval/results/{regime,regime-stream,redis-v2,redis-same,pytorch-same,
-%%        pi-stream,pi-stream-pfifo,pi-redis}/  (per-section pointers below)
+%%  Data: eval/results/{regime,regime-stream,pytorch-same,redis-v2,redis-same,
+%%        webapp,pi-stream,pi-stream-pfifo,pi-pytorch-same,pi-redis,pi-webapp,
+%%        pi-webapp-tput,pi-webapp-tput-all2}/  (per-section pointers below)
 %% ============================================================================
 \documentclass[conference]{IEEEtran}
 
@@ -50,23 +51,26 @@ post-copy). Lazy restore is usually evaluated against an eager baseline that
 reads its image from local disk, which hides the cost the network adds to
 eager. We measure both honestly for CRIU process restore, with time to first
 response (TTFR) as the metric, over a grid of round-trip times (0--2\,ms)
-and bandwidths from 100\,Mb/s to 10\,Gb/s, for a PyTorch inference server and a
-Redis-compatible key-value store. No fetch policy wins everywhere: demand
-paging wins only when bandwidth is scarce and RTT is near zero, sequential
-prefetch wins in the middle, and moving the whole image wins once
-bandwidth${}\times{}$RTT is large, which for Redis is 10 of 12 grid points.
-Each lazy policy pays roughly one RTT per demand fault, and that term
-decides the map. We then remove it: the page server pushes a recorded
-first-touch trace over its own connection at line rate while demand faults
-keep a separate connection. With a trace recorded on an earlier run this
-wins all 12 grid points for PyTorch (1.19--3.20$\times$ over the best
-existing policy) but only 6 of 12 for Redis, whose heap layout is not
-reproducible across runs on our x86 host. With a trace recorded on the
-same image, as REAP does locally, it wins all 24 grid points
-(1.22--5.75$\times$) and its TTFR comes within 1--10\,\% of the working
-set's transfer time at 100\,Mb/s and 1\,Gb/s. On two Raspberry Pi~5s over
-a real 1\,Gb/s link, streaming cuts TTFR by 1.5--3.0$\times$ for PyTorch
-and 3.5--4.0$\times$ for Redis.
+and bandwidths from 100\,Mb/s to 10\,Gb/s, for a PyTorch inference server, a
+Redis-compatible key-value store and a Python web application. No fetch
+policy wins everywhere: demand paging wins only when bandwidth is scarce and
+RTT is near zero, prefetching wins in a narrow middle, and moving the whole
+image wins once bandwidth${}\times{}$RTT is large, which for the two
+random-access workloads is 9--10 of 12 grid points. Each lazy policy pays
+roughly one RTT per demand fault, and that term decides the map. We then
+remove it: the page server pushes a recorded first-touch trace over its own
+connection at line rate while demand faults keep a separate connection.
+With a trace from an earlier run this wins all 12 grid points for PyTorch
+and the web app (1.19--3.20$\times$ over the best existing policy) but only
+6 of 12 for Redis, whose heap layout is not reproducible across runs on our
+x86 host. With a trace recorded on the same image it wins all 36 grid points
+(1.22--5.75$\times$) and comes within 1--11\,\% of the working set's
+transfer time at 100\,Mb/s and 1\,Gb/s. On two Raspberry Pi~5s over a real
+1\,Gb/s link, streaming cuts TTFR by 1.8--4.8$\times$. A trace alone,
+though, leaves every later request paging at one RTT per cold page;
+streaming the rest of the image behind the trace keeps a 2.3--2.5$\times$
+faster first response and serves the following load sooner than eager
+restore does.
 \end{abstract}
 
 % ----------------------------------------------------------------------------
@@ -93,29 +97,34 @@ Spice~\cite{holmes2025spice} restore from local storage; AWS records chunk
 access order for SnapStart and container loading~\cite{snapstart,
 brooker2023ondemand} but has not published a regime analysis.
 
-This paper makes four contributions.
+This paper makes five contributions.
 
 \begin{enumerate}
 \item \textbf{A regime map} (\S\ref{sec:map}). We measure eager-over-network,
 demand paging, sequential/stride prefetch and an adaptive prefetcher across
-four RTTs and three bandwidths. No policy wins everywhere. The losing
-policies are not slow because of bandwidth: each demand fault costs about one
-RTT, and the thousands of faults left after prefetching decide the outcome.
+four RTTs and three bandwidths for three workloads. No policy wins
+everywhere. The losing policies are not slow because of bandwidth: each
+demand fault costs about one RTT, and the thousands of faults left after
+prefetching decide the outcome.
 \item \textbf{Trace-ordered streaming} (\S\ref{sec:design}). The page server
 pushes a recorded first-touch trace as one request over its own TCP
 connection, at whatever rate TCP achieves; the handler installs pages as
 they land. Demand faults keep their own connection. TTFR then depends on
 the working set's transfer time plus one RTT per page the trace missed.
 \item \textbf{Where traces come from matters} (\S\ref{sec:stream},
-\S\ref{sec:misses}). A trace from an earlier run of the same program is
-enough for PyTorch (98--99\,\% page overlap) but not for Redis on our x86
-host (64.5\,\%), where allocator placement shifts whole pages between runs
-even with ASLR off. A trace recorded on the same image removes misses
-almost entirely and wins every grid point for both workloads.
+\S\ref{sec:misses}). A trace from an earlier run of the same program
+suffices for PyTorch and the web app (96--99.9\,\% page overlap) but not for
+Redis on our x86 host (64.5\,\%), where allocator placement shifts whole
+pages between runs even with ASLR off. A trace recorded on the same image
+removes misses almost entirely and wins every grid point.
+\item \textbf{After the first response} (\S\ref{sec:after}). A trace covers
+only what the first request touched. Later requests page in at one RTT
+each, 50$\times$ below eager throughput at 2\,ms. Streaming the rest of the
+image after the trace fixes this while keeping most of the TTFR gain.
 \item \textbf{Real hardware} (\S\ref{sec:pi}). On two Raspberry Pi~5s
-over a 1\,Gb/s link the results hold and are, if anything, stronger, and
-one loopback effect, a large penalty for streaming the rest of the image
-through a shared FIFO, turns out to be an emulation artifact.
+over a 1\,Gb/s link the results hold, and one loopback effect, a large
+penalty for streaming the rest of the image through a shared FIFO, turns
+out to be an emulation artifact.
 \end{enumerate}
 
 All measurements use \texttt{TCP\_NODELAY} on every page-server socket. A
@@ -180,20 +189,28 @@ prefetched pages go unused.
 trace-ordered streaming (\S\ref{sec:design}).
 \end{itemize}
 
-\textbf{Workloads.} \emph{PyTorch}: a ResNet-18 inference server; the probe
-writes a trigger file and waits for one inference result. Its image is
-80.4k pages (329\,MB) on x86, of which 15.5k (63\,MB, 19\,\%) are touched
-before the first result. \emph{Redis}: a key-value server holding 200k keys
-of 1\,KiB; the probe issues a fixed set of 20k \texttt{MGET}s in batches of
-100. On the x86 host the server binary is Valkey~9.1.2 (the distribution
-installs it as \texttt{redis-server}); on the Pis it is Redis~8.0.2. The
-x86 Redis trace is 29.8k pages (122\,MB). Probes reach Redis over a Unix
-socket, so probe traffic is not shaped; the Pi kernel lacks
-\texttt{unix\_diag}, so there the probe uses TCP over loopback.
+\textbf{Workloads.}
+\emph{PyTorch}: a ResNet-18 inference server; the probe writes a trigger
+file and waits for one inference result. Its x86 image is 80.4k pages
+(329\,MB), of which 15.5k (63\,MB, 19\,\%) are touched before the result.
+\emph{Redis}: a key-value server holding 200k keys of 1\,KiB; the probe
+issues a fixed set of 20k \texttt{MGET}s in batches of 100. On the x86 host
+the server binary is Valkey~9.1.2 (the distribution installs it as
+\texttt{redis-server}); on the Pis it is Redis~8.0.2. The x86 trace is 29.8k
+pages (122\,MB).
+\emph{Web app}: a Python \texttt{http.server} application over an in-memory
+SQLite database (4M orders, 50k customers, 20k products) that renders
+Jinja2 pages; each request runs an indexed query, aggregates the rows
+against cached Python objects and renders a template. The probe fetches 200
+fixed customer pages. Its image is about 260\,MB, of which 26.6k pages
+(109\,MB, 42\,\%) are touched before the probe completes.
+Probes reach Redis and the web app over a Unix socket, so probe traffic is
+not shaped; the Pi kernel lacks \texttt{unix\_diag}, so there they use TCP
+over loopback.
 
 \textbf{Metric.} TTFR is the time from the start of \texttt{criu restore}
-until the probe's first response. For \mode{full-net} it includes the image
-transfer.
+until the probe completes: one inference, 20k keys, or 200 pages. For
+\mode{full-net} it includes the image transfer.
 
 \textbf{Testbeds.} \emph{x86}: one AMD Ryzen~7 7735HS laptop, Linux 7.2.8,
 CRIU 4.2.1. Source and target share the host; the network is loopback
@@ -201,87 +218,77 @@ shaped with \texttt{netem}~\cite{hemminger2005netem}: delay $d$ on
 \texttt{lo} (so RTT${}=2d$) and a rate cap. The grid is RTT
 $\in\{0, 0.2, 1, 2\}$\,ms $\times$ rate $\in\{100\,\text{Mb/s},
 1\,\text{Gb/s}, 10\,\text{Gb/s}\}$. \emph{Pi}: two Raspberry Pi~5s on a
-direct 1\,GbE link (base RTT 164\us). Pi~A runs and restores the workload;
-Pi~B runs the page server. \texttt{netem} delay goes on A's egress only,
-so B's data keeps B's real qdisc. Pi~A runs Linux 6.18.59; PyTorch runs
-used CRIU 4.1.1, Redis runs CRIU 4.2.1 (4.1.1 cannot dump the Redis TCP
-socket on this kernel).
+direct 1\,GbE link (base RTT 155--164\us). Pi~A runs and restores the
+workload; Pi~B runs the page server. \texttt{netem} delay goes on A's egress
+only, so B's data keeps B's real qdisc. Pi~A runs Linux 6.18.59 with CRIU
+4.2.1, except the first PyTorch run (CRIU 4.1.1, \S\ref{sec:pi}).
 
 \textbf{Statistics.} Five iterations per cell, each with a fresh workload
 and checkpoint. We report medians. For the existing policies the population
 standard deviation is at most 3.6\,\% of the median (one outlier
 iteration puts \mode{full}, a 200\,ms floor, at 10\,\%). Streaming with a
-cross-run trace varies far more, up to 38\,\% for \mode{stream-all} and
-31\,\% for Redis \mode{stream}, because the number of misses changes from
-run to run (\S\ref{sec:misses}); every win we report for those modes holds
-for all five iterations, not just the median. \mode{stream-same} stays
-under 5\,\% except in six cells at 1--10\,Gb/s with one slow iteration.
-Demand-only \mode{lazy} is skipped at 1 and 2\,ms RTT on x86, where it
-exceeds the 30\,s probe timeout.
+cross-run trace varies far more, up to 56\,\%, because the number of misses
+changes from run to run (\S\ref{sec:misses}). Every win we report, except
+one cell we call a tie, holds for all five iterations: the slowest
+iteration of the winning streaming mode beats the fastest iteration of the
+best existing policy. Demand-only \mode{lazy} is skipped at 1 and 2\,ms
+RTT on x86, where it exceeds the 30\,s probe timeout.
 
 % ----------------------------------------------------------------------------
 \section{The Regime Map}
 \label{sec:map}
 % ----------------------------------------------------------------------------
 
-Table~\ref{tab:map} shows TTFR for the existing policies.
-\emph{Data: \texttt{eval/results/regime/}, \texttt{redis-v2/}.}
-
-\begin{table}[t]
+\begin{table*}[t]
 \centering
-\caption{TTFR (ms, median of 5) for existing policies on x86. Bold: best
-contender. \mode{full} reads local images and is shown as a floor.}
+\caption{TTFR (ms, median of 5) for existing policies on x86. Bold: best per
+workload and cell. \mode{full} (local images, no transfer) takes
+172--253\,ms throughout and is omitted. Image / pre-response working set:
+PyTorch 329 / 63\,MB, Redis about 280 / 122\,MB, web app 260 / 109\,MB.
+{Data: \texttt{regime/}, \texttt{redis-v2/}, \texttt{webapp/}.}}
 \label{tab:map}
-\setlength{\tabcolsep}{3.2pt}
-\begin{tabular}{@{}rlrrrrr@{}}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}rl|rrrr|rrrr|rrrr@{}}
 \toprule
-RTT & rate & full & full-net & lazy & prefetch & adaptive \\
+ & & \multicolumn{4}{c|}{PyTorch} & \multicolumn{4}{c|}{Redis (Valkey)}
+   & \multicolumn{4}{c}{Web app} \\
+RTT & rate & full-net & lazy & prefetch & adaptive
+           & full-net & lazy & prefetch & adaptive
+           & full-net & lazy & prefetch & adaptive \\
 \midrule
-\multicolumn{7}{@{}l}{\emph{PyTorch} (image 329\,MB, working set 63\,MB)} \\
-0   & 100M & 207 & 26664 & \textbf{6278} & 7706 & 7898 \\
-0   & 1G   & 206 & 2899  & 1388 & \textbf{873} & 889 \\
-0   & 10G  & 212 & 509   & 800  & \textbf{335} & 341 \\
-0.2 & 100M & 210 & 26749 & 9405 & \textbf{7855} & 8060 \\
-0.2 & 1G   & 213 & 2904  & 4544 & 1153 & \textbf{1134} \\
-0.2 & 10G  & 222 & \textbf{521} & 3966 & 628 & 606 \\
-1   & 100M & 222 & 26763 & --   & \textbf{9005} & 9096 \\
-1   & 1G   & 208 & 2928  & --   & 2550 & \textbf{2286} \\
-1   & 10G  & 212 & \textbf{549} & -- & 2188 & 1711 \\
-2   & 100M & 220 & 26765 & --   & 10853 & \textbf{10464} \\
-2   & 1G   & 210 & \textbf{2982} & -- & 4414 & 3726 \\
-2   & 10G  & 215 & \textbf{627} & -- & 4231 & 3223 \\
-\midrule
-\multicolumn{7}{@{}l}{\emph{Redis} (Valkey 9.1.2, trace 122\,MB)} \\
-0   & 100M & 179 & 22311 & \textbf{12331} & 23202 & 23906 \\
-0   & 1G   & 180 & \textbf{2427} & 2687 & 2527 & 2515 \\
-0   & 10G  & 190 & \textbf{440} & 1550 & 744 & 756 \\
-0.2 & 100M & 182 & 22317 & \textbf{18192} & 24048 & 24656 \\
-0.2 & 1G   & 177 & \textbf{2435} & 8822 & 3520 & 3480 \\
-0.2 & 10G  & 185 & \textbf{436} & 7803 & 1909 & 1825 \\
-1   & 100M & 175 & \textbf{22330} & -- & 28254 & 27257 \\
-1   & 1G   & 175 & \textbf{2464} & -- & 8756 & 7775 \\
-1   & 10G  & 174 & \textbf{478} & -- & 7594 & 5779 \\
-2   & 100M & 177 & \textbf{22354} & -- & 34679 & 31579 \\
-2   & 1G   & 172 & \textbf{2496} & -- & 15704 & 12980 \\
-2   & 10G  & 182 & \textbf{533} & -- & 14800 & 10657 \\
+0   & 100M & 26664 & \textbf{6278} & 7706 & 7898 & 22311 & \textbf{12331} & 23202 & 23906 & 21253 & \textbf{11153} & 18022 & 19005 \\
+0   & 1G   & 2899 & 1388 & \textbf{873} & 889 & \textbf{2427} & 2687 & 2527 & 2515 & 2380 & 2607 & \textbf{2184} & 2202 \\
+0   & 10G  & 509 & 800 & \textbf{335} & 341 & \textbf{440} & 1550 & 744 & 756 & \textbf{501} & 1601 & 739 & 869 \\
+0.2 & 100M & 26749 & 9405 & \textbf{7855} & 8060 & 22317 & \textbf{18192} & 24048 & 24656 & 21285 & \textbf{16517} & 19370 & 19874 \\
+0.2 & 1G   & 2904 & 4544 & 1153 & \textbf{1134} & \textbf{2435} & 8822 & 3520 & 3480 & \textbf{2381} & 8122 & 3669 & 3283 \\
+0.2 & 10G  & \textbf{521} & 3966 & 628 & 606 & \textbf{436} & 7803 & 1909 & 1825 & \textbf{495} & 7266 & 2506 & 2058 \\
+1   & 100M & 26763 & -- & \textbf{9005} & 9096 & \textbf{22330} & -- & 28254 & 27257 & \textbf{21278} & -- & 25342 & 23686 \\
+1   & 1G   & 2928 & -- & 2550 & \textbf{2286} & \textbf{2464} & -- & 8756 & 7775 & \textbf{2412} & -- & 10140 & 7667 \\
+1   & 10G  & \textbf{549} & -- & 2188 & 1711 & \textbf{478} & -- & 7594 & 5779 & \textbf{527} & -- & 9572 & 6662 \\
+2   & 100M & 26765 & -- & 10853 & \textbf{10464} & \textbf{22354} & -- & 34679 & 31579 & \textbf{21330} & -- & 33290 & 28985 \\
+2   & 1G   & \textbf{2982} & -- & 4414 & 3726 & \textbf{2496} & -- & 15704 & 12980 & \textbf{2447} & -- & 19196 & 13679 \\
+2   & 10G  & \textbf{627} & -- & 4231 & 3223 & \textbf{533} & -- & 14800 & 10657 & \textbf{579} & -- & 18832 & 13081 \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
+
+Table~\ref{tab:map} shows TTFR for the existing policies.
 
 \textbf{No single policy wins.} For PyTorch there are three zones. Demand
 paging wins only at 100\,Mb/s with zero RTT, where every extra byte is
 expensive and faults are cheap. Prefetch or the adaptive variant wins the
 middle of the grid. Eager \mode{full-net} wins once bandwidth${}\times{}$RTT
 is large: at 10\,Gb/s from 0.2\,ms and at 1\,Gb/s from 2\,ms. For Redis
-the eager zone covers 10 of 12 cells; demand paging wins the other two.
+and the web app the eager zone covers 10 and 9 of 12 cells; demand paging
+or prefetch wins only at zero or 0.2\,ms RTT.
 
-\textbf{Prefetch overfetches and misses the random workload.} For PyTorch,
+\textbf{Prefetch overfetches and misses random access.} For PyTorch,
 prefetch serves about 22k pages against a 15.5k-page working set (42\,\%
-extra), which is why it loses to demand paging at 100\,Mb/s. For Redis,
-whose probe reads hash-table buckets and values at random, sequential
-prefetch is worse than nothing at low RTT (23.2\,s vs 12.3\,s at
-0/100\,Mb/s), and it still leaves 6--9k demand faults on the Pis
-(\S\ref{sec:pi}).
+extra), which is why it loses to demand paging at 100\,Mb/s. Redis reads
+hash-table buckets and values at random, and the web app reads B-tree
+leaves and scattered Python objects; for both, sequential prefetch is worse
+than nothing at low RTT (Redis: 23.2 vs 12.3\,s at 0/100\,Mb/s; web app:
+18.0 vs 11.2\,s).
 
 \textbf{Each fault costs one RTT.} PyTorch under demand paging takes 15.5k
 faults; raising the RTT from 0 to 0.2\,ms adds 3.2\,s, which is 15.5k
@@ -291,10 +298,11 @@ why it wins at high RTT despite moving five times more data than the
 working set.
 
 \textbf{The gap.} The cost a restore cannot avoid is moving the working set:
-63\,MB is 5.1\,s at 100\,Mb/s, 0.51\,s at 1\,Gb/s and 51\,ms at 10\,Gb/s.
-The best existing policy is 1.24$\times$ above that at 100\,Mb/s and
-zero RTT, and 5.9$\times$ above it at 1\,Gb/s and 2\,ms. A policy that moved exactly the working set,
-at line rate, without per-fault round trips, would close the gap.
+for PyTorch, 63\,MB is 5.1\,s at 100\,Mb/s, 0.51\,s at 1\,Gb/s and 51\,ms at
+10\,Gb/s. The best existing policy is 1.24$\times$ above that at 100\,Mb/s
+and zero RTT, and 5.9$\times$ above it at 1\,Gb/s and 2\,ms. A policy that
+moved exactly the working set, at line rate, without per-fault round trips,
+would close the gap.
 
 % ----------------------------------------------------------------------------
 \section{Trace-Ordered Streaming}
@@ -302,10 +310,11 @@ at line rate, without per-fault round trips, would close the gap.
 % ----------------------------------------------------------------------------
 
 \textbf{Recording.} A record run is a demand-only lazy restore in which the
-handler appends each fault address to a trace file, in fault order. The
-trace is the working set before the first response, ordered by first touch.
-For traces reused across runs the workload is launched with ASLR off
-(\texttt{setarch -R}) so that addresses are comparable between runs.
+handler appends each fault address to a trace file, in fault order, until
+the first response. The trace is the working set before the first response,
+ordered by first touch. For traces reused across runs the workload is
+launched with ASLR off (\texttt{setarch -R}) so that addresses are
+comparable between runs.
 
 \textbf{Streaming.} At restore the handler opens a second connection to the
 page server and sends one request: a magic marker, a count and the list of
@@ -342,51 +351,56 @@ server reaches about 275k pages/s on loopback at 10\,Gb/s and line rate at
 \label{sec:stream}
 % ----------------------------------------------------------------------------
 
-\begin{table}[t]
+\begin{table*}[t]
 \centering
-\caption{Streaming vs the best existing policy on x86 (TTFR, ms). ``Best
-old'': best of Table~\ref{tab:map}. ``Cross-run'': best of
-\mode{stream}, \mode{stream-pf}, \mode{stream-all} with a trace from an
-earlier run. Speedups of \mode{stream-same} over best old.}
+\caption{Streaming vs the best existing policy on x86 (TTFR, ms, median of
+5). ``Old'': best of Table~\ref{tab:map}. ``Cross'': best of \mode{stream},
+\mode{stream-pf}, \mode{stream-all} with a trace from an earlier run.
+``Same'': \mode{stream-same}. $\times$: same over old.
+{Data: \texttt{regime-stream/}, \texttt{pytorch-same/},
+\texttt{redis-v2/}, \texttt{redis-same/}, \texttt{webapp/}.}}
 \label{tab:stream}
-\setlength{\tabcolsep}{3.0pt}
-\begin{tabular}{@{}rlrrrr|rrr@{}}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}rl|rrrr|rrrr|rrrr@{}}
 \toprule
- & & \multicolumn{4}{c|}{PyTorch} & \multicolumn{3}{c}{Redis} \\
-RTT & rate & old & cross & same & $\times$ & old & cross & same \\
+ & & \multicolumn{4}{c|}{PyTorch} & \multicolumn{4}{c|}{Redis}
+   & \multicolumn{4}{c}{Web app} \\
+RTT & rate & old & cross & same & $\times$ & old & cross & same & $\times$
+           & old & cross & same & $\times$ \\
 \midrule
-0   & 100M & 6278 & 5274 & \textbf{5129} & 1.22 & 12331 & 13234 & \textbf{9855} \\
-0   & 1G   & 873  & 585  & \textbf{546}  & 1.60 & 2427 & 1814 & \textbf{1011} \\
-0   & 10G  & 335  & 129  & \textbf{93}   & 3.60 & 440  & 331  & \textbf{131} \\
-0.2 & 100M & 7855 & 5292 & \textbf{5136} & 1.53 & 18192 & 14632 & \textbf{9860} \\
-0.2 & 1G   & 1134 & 682  & \textbf{544}  & 2.08 & 2435 & 2506 & \textbf{1024} \\
-0.2 & 10G  & 521  & 163  & \textbf{92}   & 5.66 & 436  & 331  & \textbf{129} \\
-1   & 100M & 9005 & 5751 & \textbf{5130} & 1.76 & 22330 & 22023 & \textbf{9875} \\
-1   & 1G   & 2286 & 820  & \textbf{554}  & 4.13 & 2464 & 2569 & \textbf{1046} \\
-1   & 10G  & 549  & 249  & \textbf{99}   & 5.55 & 478  & 357  & \textbf{140} \\
-2   & 100M & 10464 & 5679 & \textbf{5147} & 2.03 & 22354 & 24372 & \textbf{9899} \\
-2   & 1G   & 2982 & 1028 & \textbf{561}  & 5.32 & 2496 & 2647 & \textbf{1073} \\
-2   & 10G  & 627  & 338  & \textbf{109}  & 5.75 & 533  & 437  & \textbf{214} \\
+0   & 100M & 6278 & 5274 & \textbf{5129} & 1.22 & 12331 & 13234 & \textbf{9855} & 1.25 & 11153 & 8896 & \textbf{8794} & 1.27 \\
+0   & 1G   & 873  & 585  & \textbf{546}  & 1.60 & 2427 & 1814 & \textbf{1011} & 2.40 & 2184 & 995 & \textbf{897} & 2.43 \\
+0   & 10G  & 335  & 129  & \textbf{93}   & 3.60 & 440  & 331  & \textbf{131} & 3.36 & 501 & 196 & \textbf{171} & 2.93 \\
+0.2 & 100M & 7855 & 5292 & \textbf{5136} & 1.53 & 18192 & 14632 & \textbf{9860} & 1.85 & 16517 & 8911 & \textbf{8801} & 1.88 \\
+0.2 & 1G   & 1134 & 682  & \textbf{544}  & 2.08 & 2435 & 2506 & \textbf{1024} & 2.38 & 2381 & 996 & \textbf{900} & 2.65 \\
+0.2 & 10G  & 521  & 163  & \textbf{92}   & 5.66 & 436  & 331  & \textbf{129} & 3.38 & 495 & 210 & \textbf{171} & 2.89 \\
+1   & 100M & 9005 & 5751 & \textbf{5130} & 1.76 & 22330 & 22023 & \textbf{9875} & 2.26 & 21278 & 8948 & \textbf{8803} & 2.42 \\
+1   & 1G   & 2286 & 820  & \textbf{554}  & 4.13 & 2464 & 2569 & \textbf{1046} & 2.36 & 2412 & 1049 & \textbf{915} & 2.64 \\
+1   & 10G  & 549  & 249  & \textbf{99}   & 5.55 & 478  & 357  & \textbf{140} & 3.41 & 527 & 251 & \textbf{170} & 3.10 \\
+2   & 100M & 10464 & 5679 & \textbf{5147} & 2.03 & 22354 & 24372 & \textbf{9899} & 2.26 & 21330 & 9475 & \textbf{8824} & 2.42 \\
+2   & 1G   & 2982 & 1028 & \textbf{561}  & 5.32 & 2496 & 2647 & \textbf{1073} & 2.33 & 2447 & 1088 & \textbf{934} & 2.62 \\
+2   & 10G  & 627  & 338  & \textbf{109}  & 5.75 & 533  & 437  & \textbf{214} & 2.49 & 579 & 324 & \textbf{179} & 3.23 \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
 \begin{figure*}[t]
 \centering
 \pgfplotsset{
   rmap/.style={
-    width=0.47\textwidth, height=5.0cm,
+    width=0.345\textwidth, height=4.6cm,
     xmin=-0.1, xmax=2.1, log ticks with fixed point,
     xtick={0,0.2,1,2}, xlabel={RTT (ms)},
-    ylabel={TTFR (ms), log scale},
     grid=major, grid style={gray!20},
     axis line style={gray!60}, tick style={gray!60},
+    title style={font=\small}, label style={font=\small},
+    tick label style={font=\footnotesize},
     legend style={draw=none, fill=none, font=\footnotesize},
     legend cell align=left, every axis plot/.append style={line width=1.2pt, mark size=2.2pt},
   }}
 \begin{tikzpicture}
 \begin{axis}[rmap, ymode=log, title={PyTorch, 1\,Gb/s}, ymin=400, ymax=5000,
-             ytick={500,1000,2000,4000},
+             ylabel={TTFR (ms), log scale}, ytick={500,1000,2000,4000},
              legend to name=rmaplegend, legend columns=5]
 \addplot[color=cA, mark=square*] coordinates {(0,2899) (0.2,2904) (1,2928) (2,2982)};
 \addlegendentry{eager over network (\mode{full-net})}
@@ -409,40 +423,48 @@ RTT & rate & old & cross & same & $\times$ & old & cross & same \\
 \addplot[color=cD, mark=diamond*] coordinates {(0,1011) (0.2,1024) (1,1046) (2,1073)};
 \addplot[gray, dashed, line width=0.8pt, mark=none] coordinates {(-0.1,976) (2.1,976)};
 \end{axis}
+\end{tikzpicture}\hfill
+\begin{tikzpicture}
+\begin{axis}[rmap, ymode=log, title={Web app, 1\,Gb/s}, ymin=400, ymax=20000,
+             ytick={500,1000,2000,5000,10000}]
+\addplot[color=cA, mark=square*] coordinates {(0,2380) (0.2,2381) (1,2412) (2,2447)};
+\addplot[color=cB, mark=triangle*] coordinates {(0,2202) (0.2,3283) (1,7667) (2,13679)};
+\addplot[color=cC, mark=*] coordinates {(0,995) (0.2,996) (1,1049) (2,1088)};
+\addplot[color=cD, mark=diamond*] coordinates {(0,897) (0.2,900) (1,915) (2,934)};
+\addplot[gray, dashed, line width=0.8pt, mark=none] coordinates {(-0.1,872) (2.1,872)};
+\end{axis}
 \end{tikzpicture}
 \\[2pt]\ref{rmaplegend}
 \caption{TTFR against RTT at 1\,Gb/s on x86. Lazy prefetching grows by
 about one RTT per remaining fault; eager pays for the whole image once;
-same-image streaming stays within 10\,\% of the working set's transfer
+same-image streaming stays within 11\,\% of the working set's transfer
 time at every RTT.}
 \label{fig:rtt}
 \end{figure*}
 
-Table~\ref{tab:stream} and Fig.~\ref{fig:rtt} summarize the streaming
-modes. \emph{Data: \texttt{regime-stream/}, \texttt{redis-v2/},
-\texttt{redis-same/}, \texttt{pytorch-same/}.}
+Table~\ref{tab:stream} and Fig.~\ref{fig:rtt} summarize the streaming modes.
 
-\textbf{PyTorch, cross-run trace.} A stream mode wins all 12 cells, by
-1.19--3.20$\times$ over the best existing policy. Plain \mode{stream} is
-best at 100\,Mb/s, \mode{stream-pf} in the middle, and \mode{stream-all}
-at 10\,Gb/s with RTT${}\ge{}$1\,ms. TTFR still rises with RTT (585 to
-1028\,ms at 1\,Gb/s) because a few hundred faults miss the trace.
-
-\textbf{Redis, cross-run trace.} Only 64.5\,\% of one recording's pages
-appear in the other. A stream mode beats the best existing policy by
+\textbf{Cross-run traces.} For PyTorch a stream mode wins all 12 cells,
+by 1.19--3.20$\times$ over the best existing policy; plain \mode{stream} is
+best at 100\,Mb/s, \mode{stream-pf} in the middle, and \mode{stream-all} at
+10\,Gb/s with RTT${}\ge{}$1\,ms. TTFR still rises with RTT (585 to
+1028\,ms at 1\,Gb/s) because a few hundred faults miss the trace. The web
+app's two recordings overlap 99.7\,\%, and plain \mode{stream} wins all 12
+cells by 1.25--2.56$\times$. For Redis only 64.5\,\% of one recording's
+pages appear in the other. A stream mode beats the best existing policy by
 1.22--1.34$\times$ in 6 cells, ties within 2\,\% in one, and loses the
 other five by 3--9\,\%: thousands of misses at one RTT each eat the gain.
 
-\textbf{Same-image trace.} \mode{stream-same} wins all 24 cells: by
-1.22--5.75$\times$ over the best existing policy for PyTorch and
-1.25--3.41$\times$ for Redis, and by 1.03--3.10$\times$ and
-1.34--2.57$\times$ over the best cross-run stream. Demand faults fall to
+\textbf{Same-image trace.} \mode{stream-same} wins all 36 cells: by
+1.22--5.75$\times$ over the best existing policy for PyTorch,
+1.25--3.41$\times$ for Redis and 1.27--3.23$\times$ for the web app, and by
+1.01--3.10$\times$ over the best cross-run stream. Demand faults fall to
 0--4 misses for PyTorch and under 120 faults of any class for Redis.
 TTFR becomes nearly flat in RTT (PyTorch at 1\,Gb/s: 546 to 561\,ms over
 0--2\,ms) and tracks bandwidth. It lands within 1--2\,\% of
-$\text{working set}/\text{bandwidth}$ at 100\,Mb/s, 4--10\,\% at
+$\text{working set}/\text{bandwidth}$ at 100\,Mb/s, 3--11\,\% at
 1\,Gb/s, and 30--120\,ms above it at 10\,Gb/s, where restore overheads
-dominate a 50--100\,ms transfer.
+dominate a 50--110\,ms transfer.
 
 \textbf{The cost moved to the record pass.} The record pass is a
 demand-only lazy restore. For PyTorch it takes 0.8--6.3\,s at zero RTT
@@ -466,6 +488,11 @@ of pages with a median rank shift of 4. The differences sit in the
 \texttt{brk} heap: one run had a 617-page heap region the other lacked.
 Even the union of three runs' traces leaves 85--690 misses against a
 fourth. Every run allocates some fresh heap that no earlier trace can name.
+
+\textbf{Web app: reproducible.} Python randomizes string hashes per
+process, which changes dictionary layouts, yet two web-app recordings share
+99.7\,\% of pages on x86 and 99.9\,\% on the Pi. Cross-run \mode{stream} is
+within 1--17\,\% of \mode{stream-same} at 100\,Mb/s and 1\,Gb/s.
 
 \textbf{Redis on x86: layout jitter.} The two x86 Redis traces have the
 same number of pages in each 256\,MB region (27,210 vs 27,212), but the long
@@ -558,74 +585,131 @@ stream-all & 2000 & 1372 & 1292 & 3.53 & 3.56 \\
 \label{sec:pi}
 % ----------------------------------------------------------------------------
 
+\begin{table*}[t]
+\centering
+\caption{Pi TTFR (ms, median of 5) over a real 1\,GbE link. Columns are the
+added netem delay; RTT is about 0.16\,ms more. Speedup: best streaming mode
+over the best existing policy. Image / trace: PyTorch 306 / 61\,MB,
+Redis 437 / 111\,MB, web app 259 / 109\,MB. PyTorch rows use CRIU 4.1.1 except
+\mode{stream-same}$^\dagger$, a later run with CRIU 4.2.1 in which
+\mode{full-net} and \mode{stream-pf} were within 6\,\% of these values.
+{Data: \texttt{pi-stream/}, \texttt{pi-pytorch-same/},
+\texttt{pi-redis/}, \texttt{pi-webapp/}.}}
+\label{tab:pi}
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{@{}l|rrr|rrr|rrr@{}}
+\toprule
+ & \multicolumn{3}{c|}{PyTorch} & \multicolumn{3}{c|}{Redis 8.0.2}
+ & \multicolumn{3}{c}{Web app} \\
+mode & 0 & 1\,ms & 2\,ms & 0 & 1\,ms & 2\,ms & 0 & 1\,ms & 2\,ms \\
+\midrule
+full (floor) & 277 & 269 & 275 & 259 & 260 & 258 & 323 & 323 & 325 \\
+full-net & 2939 & 2937 & 2947 & 4059 & 4064 & 4073 & 2601 & 2607 & 2607 \\
+lazy & 2588 & -- & -- & 4586 & -- & -- & 4854 & -- & -- \\
+prefetch & 1023 & 2850 & 5014 & 3606 & 9989 & 17709 & 2505 & 10396 & 18892 \\
+adaptive & 1029 & 2569 & 4226 & 3616 & 8218 & 13433 & 2484 & 8008 & 13490 \\
+stream & 728 & 1127 & 1594 & 1018 & 1155 & 1359 & \textbf{966} & 973 & 989 \\
+stream-pf & 700 & 867 & 1076 & 1021 & 1049 & 1058 & 1127 & 1313 & 1591 \\
+stream-all & 1145 & 1249 & 1372 & 1317 & 1715 & 1742 & 1322 & 1454 & 1526 \\
+stream-same & \textbf{561}$^\dagger$ & \textbf{597}$^\dagger$ & \textbf{617}$^\dagger$ & \textbf{1002} & \textbf{1006} & \textbf{1014} & 972 & \textbf{979} & \textbf{985} \\
+\midrule
+speedup & 1.82$\times$ & 4.30$\times$ & 4.78$\times$ & 3.60$\times$ & 4.04$\times$ & 4.02$\times$ & 2.57$\times$ & 2.66$\times$ & 2.65$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Table~\ref{tab:pi} repeats the comparison on two Raspberry Pi~5s.
+
+\textbf{The loopback result holds.} For PyTorch, cross-run
+\mode{stream-pf} wins every delay by 1.46--2.96$\times$, close to the x86
+1\,Gb/s cells (1.49--2.90$\times$), and \mode{stream-same} by
+1.82--4.78$\times$, with 13--18 misses per run. The existing policies order
+the same way: prefetch wins at low RTT and eager from about 2\,ms. Each
+cross-run miss costs about one RTT plus 0.7\,ms of service time on the Pi;
+prefetching around misses removes a third of them.
+
+\textbf{Redis and the web app gain 2.6--4.0$\times$.} Redis touches
+111\,MB of a 437\,MB image before its first reply; eager moves all of it
+(about 3.5\,s at line rate), streaming moves the working set.
+\mode{stream-same} sits at the bandwidth floor: 111\,MB at 1\,Gb/s is about
+0.9\,s, it took 1.00--1.01\,s, the process overtook the stream about 400
+times (``ahead'' faults) and only 7 pages missed. The web app touches
+42\,\% of its image, so its gain is smaller (2.6--2.7$\times$). On the Pi
+both have reproducible layouts (98.8\,\% and 99.9\,\% trace overlap), so
+cross-run streaming comes within 5\,\% of \mode{stream-same}. For the
+web app, prefetching around misses \emph{hurts} (\mode{stream-pf} is
+17--61\,\% slower than \mode{stream}): it puts pages the process never
+needs on the link ahead of ones it does.
+
+\textbf{Old lazy policies collapse with RTT.} Random access defeats
+sequential prefetch, which still leaves 6--9k faults for Redis and the web
+app: the adaptive prefetcher reaches 13.4--13.5\,s at 2.16\,ms RTT, more
+than three times the eager time.
+
+% ----------------------------------------------------------------------------
+\section{After the First Response}
+\label{sec:after}
+% ----------------------------------------------------------------------------
+
+TTFR rewards fetching exactly what the first request needs. A restored
+service keeps serving, though, and its next requests read pages the trace
+never named. We measured this on the Pis with the web app: right after the
+probe, the restored process serves 1000 further customer pages, disjoint
+from the probe's. Record runs stop at the first response, so traces do not
+include this load. Table~\ref{tab:after} reports TTFR, the throughput of
+the follow-up phase, and when all 1200 requests have been served.
+{Data: \texttt{pi-webapp-tput/}, \texttt{pi-webapp-tput-all2/}.}
+
 \begin{table}[t]
 \centering
-\caption{Pi TTFR (ms, median of 5) over a real 1\,GbE link. RTT is the
-164\us base plus the added delay. Speedup: best streaming mode over the
-best existing policy. PyTorch: image 74.7k pages, CRIU 4.1.1. Redis 8.0.2:
-image 437\,MB, trace 111\,MB, CRIU 4.2.1.}
-\label{tab:pi}
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}lrrr@{}}
+\caption{Pi web app: TTFR, follow-up throughput (req/s) and time until 1200
+requests are served (s), at 0 and 2\,ms added delay. Median of 5.}
+\label{tab:after}
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{@{}l|rrr|rrr@{}}
 \toprule
-mode & 0.16\,ms & 1.16\,ms & 2.16\,ms \\
+ & \multicolumn{3}{c|}{delay 0} & \multicolumn{3}{c}{delay 2\,ms} \\
+mode & TTFR & req/s & done & TTFR & req/s & done \\
 \midrule
-\multicolumn{4}{@{}l}{\emph{PyTorch}} \\
-full (floor)   & 277  & 269  & 275 \\
-full-net       & 2939 & 2937 & 2947 \\
-prefetch       & 1023 & 2850 & 5014 \\
-adaptive       & 1029 & 2569 & 4226 \\
-stream         & 728  & 1127 & 1594 \\
-stream-pf      & \textbf{700} & \textbf{867} & \textbf{1076} \\
-stream-all     & 1145 & 1249 & 1372 \\
-speedup        & 1.46$\times$ & 2.96$\times$ & 2.74$\times$ \\
-\midrule
-\multicolumn{4}{@{}l}{\emph{Redis}} \\
-full (floor)   & 259  & 260  & 258 \\
-full-net       & 4059 & 4064 & 4073 \\
-lazy           & 4586 & --   & -- \\
-prefetch       & 3606 & 9989 & 17709 \\
-adaptive       & 3616 & 8218 & 13433 \\
-stream         & 1018 & 1155 & 1359 \\
-stream-pf      & 1021 & 1049 & 1058 \\
-stream-all     & 1317 & 1715 & 1742 \\
-stream-same    & \textbf{1002} & \textbf{1006} & \textbf{1014} \\
-speedup        & 3.60$\times$ & 4.04$\times$ & 4.02$\times$ \\
+full (local) & 325 & 1071 & 1.26 & 324 & 1077 & 1.25 \\
+full-net & 2597 & 1072 & 3.53 & 2610 & 1074 & 3.54 \\
+adaptive & 2462 & 701 & 3.89 & 13406 & 237 & 17.6 \\
+stream & \textbf{965} & 219 & 5.53 & \textbf{980} & 21 & 48.6 \\
+stream-pf & 1019 & 414 & 3.43 & 1149 & 62 & 17.3 \\
+stream-same & 970 & 209 & 5.76 & 983 & 21 & 48.6 \\
+stream-all & 1045 & 497 & \textbf{3.06} & 1134 & 498 & \textbf{3.14} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:pi} repeats the comparison on two Raspberry Pi~5s.
-\emph{Data: \texttt{pi-stream/}, \texttt{pi-stream-pfifo/},
-\texttt{pi-redis/}.}
+\textbf{A trace alone wins the first response and loses the rest.}
+After the stream ends, every page a later request touches is a demand
+fault at one RTT with nothing in flight. Follow-up throughput falls to
+209--219\,req/s at the base RTT and 21\,req/s at 2\,ms, 50$\times$ below
+eager; serving 1200 requests takes 48.6\,s against 3.5\,s for
+\mode{full-net}.
 
-\textbf{The loopback result holds.} For PyTorch, \mode{stream-pf} wins
-every delay by 1.46--2.96$\times$, close to the x86 1\,Gb/s cells
-(1.49--2.90$\times$), and the existing policies order the same way:
-prefetch wins at low RTT and eager from about 2\,ms. Each miss costs about
-one RTT plus 0.7\,ms of service time on the Pi; prefetching around misses
-removes a third of them, which is where \mode{stream-pf}'s lead over
-\mode{stream} comes from.
+\textbf{Streaming the rest gets both.} \mode{stream-all} reaches its first
+response 2.3--2.5$\times$ sooner than eager and finishes all 1200 requests
+11--13\,\% sooner, because the rest of the image arrives in the background
+(complete about 2.3\,s in) while requests are served. Throughput while the
+rest is still arriving is about half of eager's; once a process holds all
+its pages it runs at full speed (\mode{full}, \mode{full-net}:
+1071--1077\,req/s). Its TTFR here (1045 and 1134\,ms) is lower than in the
+main Pi run of Table~\ref{tab:pi} (1322 and 1526\,ms), with under 2\,\%
+spread in each; we have not explained the difference.
 
-\textbf{Redis gains most.} Redis touches 111\,MB of a 437\,MB image before
-its first reply. Eager moves all of it (about 3.5\,s at line rate);
-streaming moves the working set. Streaming wins by 3.5--4.0$\times$ at
-every delay. \mode{stream-same} sits at the bandwidth floor: 111\,MB at
-1\,Gb/s is about 0.9\,s, it took 1.00--1.01\,s, the process overtook the
-stream about 400 times (``ahead'' faults) and only 7 pages missed. Here the
-cross-run trace overlaps 98.8\,\%, so \mode{stream-pf} comes within 2--4\,\%
-of \mode{stream-same}; the gap that mattered on x86 is absent.
-
-\textbf{Old lazy policies collapse with RTT.} Redis reads its hash table at
-random, so prefetch guesses badly and still leaves 6--9k faults: the
-adaptive prefetcher reaches 13.4\,s at 2.16\,ms RTT, more than three times
-the eager time.
+A first attempt at this \mode{stream-all} run recorded 5-page traces (both
+record passes finished in about 330\,ms with 5 faults, as if restored
+eagerly); it started a minute after the previous run ended. A rerun two
+minutes later was normal. We discarded the first attempt and did not find
+the cause.
 
 % ----------------------------------------------------------------------------
 \section{Implementation Pitfalls}
 % ----------------------------------------------------------------------------
 
-Three problems cost us days and are easy to repeat.
+Four problems cost us time and are easy to repeat.
 
 \textbf{\texttt{UFFDIO\_COPY} returns \texttt{EAGAIN} and leaves the thread
 asleep.} While a \texttt{REMOVE} or \texttt{UNMAP} event is pending (jemalloc
@@ -647,39 +731,43 @@ refuses to restore a process whose open file has changed size; CRIU 4.2
 also refuses to overwrite an existing pidfile. The harness truncates the
 log to its dump-time size and removes the pidfile between passes.
 
+\textbf{Nagle again.} The web app's \texttt{http.server} writes headers and
+body separately. Over TCP, Nagle's algorithm holds the body until the
+client's delayed ACK: the 200-request probe took 8.4\,s instead of 120\,ms.
+Production servers set \texttt{TCP\_NODELAY}, and so does ours.
+
 % ----------------------------------------------------------------------------
 \section{Discussion and Limitations}
 % ----------------------------------------------------------------------------
 
 \textbf{What to deploy.} If a snapshot is restored more than once, record
-its first-touch trace on the first restore and stream it on later ones:
-TTFR then approaches the working set's transfer time at every RTT we
-tested. Cross-run traces are worth trying only where the program's heap
-layout is reproducible; checking two recordings' overlap is cheap and
+its first-touch trace on the first restore. If only the first response
+matters, stream the trace alone: TTFR then approaches the working set's
+transfer time at every RTT we tested. If the process keeps serving, stream
+the rest of the image behind the trace, or every later request pays an RTT
+per cold page. Cross-run traces are worth trying only where the program's
+heap layout is reproducible; checking two recordings' overlap is cheap and
 predicts the outcome. Without a trace, the regime map applies: demand
-paging at low bandwidth and near-zero RTT, prefetching in the middle, and
-eager transfer once bandwidth${}\times{}$RTT is large or the access
-pattern is random.
+paging at low bandwidth and near-zero RTT, prefetching in a narrow middle
+for sequential workloads, and eager transfer once bandwidth${}\times{}$RTT
+is large or the access pattern is random.
 
 \textbf{Limitations.}
 \begin{itemize}
-\item Two workloads. Both touch a quarter of their image or less before
-the first response (19\,\% for PyTorch on x86, 25\,\% for Redis on the
-Pi); a workload that touches most of its image
-leaves streaming little to save over eager.
+\item Three workloads, touching 19--42\,\% of their image before the first
+response. A workload that touches most of its image leaves streaming
+little to save over eager.
 \item x86 results use \texttt{netem} on loopback, with source and target on
 one host. The Pi results show one loopback effect (\S\ref{sec:rest}) does
 not transfer; others might not either.
 \item The page server is single-threaded Python. At 10\,Gb/s its throughput
 and restore overheads, not the network, set the remaining 30--120\,ms.
-\item Five iterations per cell. Cross-run streaming is noisy
-(standard deviation up to 38\,\% of the median); more iterations would
-narrow its medians, though not change which policy wins.
-\item TTFR only. We do not measure throughput after the first response,
-during which a lazy restore is still paging.
-\item The Pi PyTorch and Redis runs used different CRIU versions (4.1.1 and
-4.2.1); we did not run \mode{stream-same} for PyTorch on the Pi.
-\item The cause of x86 heap-layout jitter is only partly identified.
+\item Five iterations per cell. Cross-run streaming is noisy (standard
+deviation up to 56\,\% of the median); more iterations would narrow its
+medians, though the wins we report hold in every iteration.
+\item Post-response behavior was measured for one workload, on the Pis.
+\item The cause of x86 heap-layout jitter is only partly identified, and
+two Pi \mode{stream-all} anomalies (\S\ref{sec:after}) are unexplained.
 \end{itemize}
 
 % ----------------------------------------------------------------------------
@@ -687,18 +775,20 @@ during which a lazy restore is still paging.
 % ----------------------------------------------------------------------------
 
 Against an honest eager baseline that pays for moving its image, lazy
-restore is not a free win: for a random-access key-value store, eager
-transfer beats every lazy policy at 10 of 12 network settings we tested.
-What decides the map is one round trip per demand fault. Streaming a
-recorded first-touch trace by server push removes most of those round
-trips. With a trace recorded on the same snapshot, it beats every existing
-policy at all 24 settings, by up to 5.75$\times$, and stays within 10\,\%
-of the time to move the working set at 100\,Mb/s and 1\,Gb/s. On real
-hardware it cuts TTFR by up to 4$\times$.
+restore is not a free win: for the two random-access workloads, eager
+transfer beats every lazy policy at 9--10 of 12 network settings. What
+decides the map is one round trip per demand fault. Streaming a recorded
+first-touch trace by server push removes most of those round trips. With a
+trace recorded on the same snapshot it beats every existing policy at all
+36 settings, by up to 5.75$\times$, and stays within 11\,\% of the time to
+move the working set at 100\,Mb/s and 1\,Gb/s; on real hardware it cuts
+TTFR by up to 4.8$\times$. A trace alone is not enough for a process that
+keeps serving: streaming the rest of the image behind it keeps most of the
+TTFR gain and serves the following load sooner than eager restore.
 
 \section*{Artifact Availability}
 Code, harnesses and raw results are in the DistriProc repository
-(\texttt{src/}, \texttt{eval/}); each section names its result directory
+(\texttt{src/}, \texttt{eval/}); each table names its result directories
 under \texttt{eval/results/}.
 
 \bibliographystyle{IEEEtran}

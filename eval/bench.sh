@@ -266,8 +266,9 @@ run_iteration() {
     log_info "[$wl_name/$mode] measuring throughput..."
     THROUGHPUT=0
     # NO_THROUGHPUT=1: skip it, e.g. redis-benchmark would fault in (and trace)
-    # pages of the restored server beyond the TTFR probe
-    [ -n "${NO_THROUGHPUT:-}" ] || workload_throughput || true
+    # pages of the restored server beyond the TTFR probe. A record run never
+    # measures it: the trace must stop at the first response.
+    [ -n "${NO_THROUGHPUT:-}" ] || [ "$mode" = lazy-record ] || workload_throughput || true
     throughput="$THROUGHPUT"
     log_info "[$wl_name/$mode] throughput = ${throughput} ops/sec"
 

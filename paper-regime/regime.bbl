@@ -43,8 +43,10 @@ L.~Ao, G.~Porter, and G.~M. Voelker, ``{FaaSnap}: {FaaS} made fast using
   snapshot-based {VMs},'' in \emph{Proc.\ EuroSys}, 2022.
 
 \bibitem{holmes2025spice}
-Holmes \emph{et~al.}, ``Rethinking process snapshots for near-warm serverless
-  cold starts,'' arXiv:2509.14292, 2025, to appear at OSDI 2026.
+B.~Holmes, B.~Dinis, L.~Honcharuk, J.~Fried, and A.~Belay, ``Rethinking process
+  snapshots for near-warm serverless cold starts,'' in \emph{Proc.\ USENIX
+  OSDI}, 2026, earlier version: ``Taming Serverless Cold Starts Through OS
+  Co-Design'', arXiv:2509.14292.
 
 \bibitem{snapstart}
 ``Under the hood: how {AWS} {Lambda} {SnapStart} optimizes function startup

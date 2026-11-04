@@ -1,0 +1,125 @@
+Config: prefetch=on adaptive=on seq=16 stride=8 dup_disable=80% dup_halve=50% hot_pages=(none)
+Listening on /tmp/distriproc-bench-webapp-lazy-adaptive-4XF7L6/lazy-pages.socket
+Connected to page server at 127.0.0.1:9998
+Waiting for CRIU restore to connect...
+CRIU restore connected
+Received PID: 467751
+Received userfaultfd: 3
+Started async prefetch thread
+Handling page faults...
+Async prefetch: connected to page server
+Fault 1: 0x7fba5738c000 (prefetched 16)
+Restore finished (magic received)
+Fault 2: 0x7ffdb7a33000 (prefetched 16)
+Fault 3: 0x7fba56a21000 (prefetched 16)
+Fault 4: 0x7fba548ae000 (prefetched 16)
+Fault 5: 0x7fba57304000 (prefetched 16)
+Fault 6: 0x7fba552b1000 (prefetched 16)
+Fault 7: 0x7fba552b0000 (prefetched 15)
+Fault 8: 0x7fba551c1000 (prefetched 16)
+Fault 9: 0x7fba5727f000 (prefetched 16)
+Fault 10: 0x7fba563f8000 (prefetched 16)
+Fault 100: 0x7fba57298000 (prefetched 16)
+Policy: faults=128 hits=0 prefetched=1274 drops=0 dup=0 dup_rate=0% qdepth=11 => prefetch=on seq 16->18 stride 8->9
+Fault 200: 0x56409be45000 (prefetched 18)
+Fault 300: 0x56409f1fd000 (prefetched 18)
+Policy: faults=128 hits=0 prefetched=1154 drops=0 dup=0 dup_rate=0% qdepth=17 => prefetch=on seq 18->20 stride 9->10
+Fault 400: 0x5640a1aae000 (prefetched 20)
+Fault 500: 0x5640a540b000 (prefetched 20)
+Policy: faults=128 hits=0 prefetched=1259 drops=0 dup=0 dup_rate=0% qdepth=20 => prefetch=on seq 20->22 stride 10->11
+Fault 600: 0x7fba54e3e000 (prefetched 12)
+Policy: faults=128 hits=0 prefetched=1265 drops=0 dup=0 dup_rate=0% qdepth=3 => prefetch=on seq 22->24 stride 11->12
+Fault 700: 0x7fba552fe000 (prefetched 24)
+Fault 800: 0x56409ff56000 (prefetched 24)
+Policy: faults=128 hits=0 prefetched=1433 drops=0 dup=0 dup_rate=0% qdepth=17 => prefetch=on seq 24->26 stride 12->13
+Fault 900: 0x7fba54bbb000 (prefetched 7)
+Fault 1000: 0x5640a0e2e000 (prefetched 11)
+Policy: faults=128 hits=0 prefetched=1201 drops=0 dup=0 dup_rate=0% qdepth=3 => prefetch=on seq 26->28 stride 13->14
+Fault 1100: 0x7fba54ec2000 (prefetched 2)
+Policy: faults=128 hits=0 prefetched=1316 drops=0 dup=0 dup_rate=0% qdepth=28 => prefetch=on seq 28->30 stride 14->15
+Fault 1200: 0x5640a086d000 (prefetched 9)
+Policy: faults=128 hits=0 prefetched=1604 drops=0 dup=0 dup_rate=0% qdepth=30 => prefetch=on seq 30->32 stride 15->16
+Fault 1300: 0x5640a7011000 (prefetched 32)
+Fault 1400: 0x5640a5066000 (prefetched 31)
+Policy: faults=128 hits=0 prefetched=1668 drops=0 dup=0 dup_rate=0% qdepth=32 => prefetch=on seq 32->32 stride 16->16
+Fault 1500: 0x5640a3be8000 (prefetched 16)
+Policy: faults=128 hits=0 prefetched=1575 drops=0 dup=0 dup_rate=0% qdepth=32 => prefetch=on seq 32->32 stride 16->16
+Fault 1600: 0x5640a1b6d000 (prefetched 32)
+Policy: faults=128 hits=0 prefetched=1398 drops=0 dup=0 dup_rate=0% qdepth=31 => prefetch=on seq 32->32 stride 16->16
+Fault 1700: 0x56409efa9000 (prefetched 32)
+Policy: faults=128 hits=0 prefetched=1504 drops=0 dup=0 dup_rate=0% qdepth=32 => prefetch=on seq 32->32 stride 16->16
+Fault 1800: 0x56409f314000 (prefetched 32)
+Fault 1900: 0x56409cdd0000 (prefetched 14)
+Policy: faults=128 hits=0 prefetched=1392 drops=0 dup=0 dup_rate=0% qdepth=15 => prefetch=on seq 32->32 stride 16->16
+Fault 2000: 0x5640a4d91000 (prefetched 32)
+Policy: faults=128 hits=0 prefetched=1456 drops=0 dup=0 dup_rate=0% qdepth=32 => prefetch=on seq 32->32 stride 16->16
+Fault 2100: 0x5640a32ab000 (prefetched 31)
+Policy: faults=128 hits=0 prefetched=1538 drops=0 dup=0 dup_rate=0% qdepth=32 => prefetch=on seq 32->32 stride 16->16
+Fault 2200: 0x56409de2e000 (prefetched 32)
+Fault 2300: 0x5640a1eea000 (prefetched 0)
+Fault 2400: 0x5640a476b000 (prefetched 11)
+Policy: faults=128 hits=0 prefetched=1263 drops=0 dup=0 dup_rate=0% qdepth=32 => prefetch=on seq 32->32 stride 16->16
+Fault 2500: 0x56409c990000 (prefetched 10)
+Policy: faults=128 hits=0 prefetched=1281 drops=0 dup=0 dup_rate=0% qdepth=31 => prefetch=on seq 32->32 stride 16->16
+Fault 2600: 0x56409d8fd000 (prefetched 11)
+Policy: faults=128 hits=0 prefetched=1266 drops=0 dup=0 dup_rate=0% qdepth=1 => prefetch=on seq 32->32 stride 16->16
+Fault 2700: 0x5640a1ea8000 (prefetched 1)
+Fault 2800: 0x56409c911000 (prefetched 21)
+Policy: faults=128 hits=0 prefetched=1049 drops=0 dup=0 dup_rate=0% qdepth=15 => prefetch=on seq 32->32 stride 16->16
+Fault 2900: 0x5640a2a0d000 (prefetched 10)
+Policy: faults=128 hits=0 prefetched=1239 drops=0 dup=0 dup_rate=0% qdepth=32 => prefetch=on seq 32->32 stride 16->16
+Fault 3000: 0x56409cb27000 (prefetched 30)
+Policy: faults=128 hits=0 prefetched=1124 drops=0 dup=0 dup_rate=0% qdepth=10 => prefetch=on seq 32->32 stride 16->16
+Fault 3100: 0x5640a2684000 (prefetched 0)
+Fault 3200: 0x56409fa2a000 (prefetched 21)
+Policy: faults=128 hits=0 prefetched=1002 drops=0 dup=0 dup_rate=0% qdepth=0 => prefetch=on seq 32->32 stride 16->16
+Fault 3300: 0x56409f8f8000 (prefetched 20)
+Policy: faults=128 hits=0 prefetched=937 drops=0 dup=0 dup_rate=0% qdepth=6 => prefetch=on seq 32->32 stride 16->16
+Fault 3400: 0x5640a50f6000 (prefetched 16)
+Policy: faults=128 hits=0 prefetched=868 drops=0 dup=0 dup_rate=0% qdepth=32 => prefetch=on seq 32->32 stride 16->16
+Fault 3500: 0x5640a2a42000 (prefetched 1)
+Policy: faults=128 hits=0 prefetched=829 drops=0 dup=0 dup_rate=0% qdepth=0 => prefetch=on seq 32->32 stride 16->16
+Fault 3600: 0x5640a1611000 (prefetched 5)
+Fault 3700: 0x7fba54616000 (prefetched 32)
+Policy: faults=128 hits=0 prefetched=787 drops=0 dup=0 dup_rate=0% qdepth=18 => prefetch=on seq 32->32 stride 16->16
+Fault 3800: 0x56409d5cc000 (prefetched 16)
+Policy: faults=128 hits=0 prefetched=827 drops=0 dup=0 dup_rate=0% qdepth=1 => prefetch=on seq 32->32 stride 16->16
+Fault 3900: 0x5640a0fd0000 (prefetched 6)
+Policy: faults=128 hits=0 prefetched=811 drops=0 dup=0 dup_rate=0% qdepth=8 => prefetch=on seq 32->32 stride 16->16
+Fault 4000: 0x5640a763f000 (prefetched 31)
+Policy: faults=128 hits=0 prefetched=775 drops=0 dup=0 dup_rate=0% qdepth=0 => prefetch=on seq 32->32 stride 16->16
+Fault 4100: 0x56409e92c000 (prefetched 11)
+Fault 4200: 0x5640a5638000 (prefetched 6)
+Policy: faults=128 hits=0 prefetched=690 drops=0 dup=0 dup_rate=0% qdepth=9 => prefetch=on seq 32->32 stride 16->16
+Fault 4300: 0x56409e5ff000 (prefetched 0)
+Policy: faults=128 hits=0 prefetched=679 drops=0 dup=0 dup_rate=0% qdepth=5 => prefetch=on seq 32->32 stride 16->16
+Fault 4400: 0x56409fa26000 (prefetched 1)
+Policy: faults=128 hits=0 prefetched=718 drops=0 dup=0 dup_rate=0% qdepth=0 => prefetch=on seq 32->32 stride 16->16
+Fault 4500: 0x5640a8252000 (prefetched 32)
+Fault 4600: 0x5640a000b000 (prefetched 13)
+Policy: faults=128 hits=0 prefetched=844 drops=0 dup=0 dup_rate=0% qdepth=18 => prefetch=on seq 32->32 stride 16->16
+Fault 4700: 0x5640a4e89000 (prefetched 3)
+Policy: faults=128 hits=0 prefetched=458 drops=0 dup=0 dup_rate=0% qdepth=2 => prefetch=on seq 32->32 stride 16->16
+Fault 4800: 0x56409e412000 (prefetched 8)
+Policy: faults=128 hits=0 prefetched=590 drops=0 dup=0 dup_rate=0% qdepth=0 => prefetch=on seq 32->32 stride 16->16
+Fault 4900: 0x56409f6c8000 (prefetched 2)
+Policy: faults=128 hits=0 prefetched=502 drops=0 dup=0 dup_rate=0% qdepth=1 => prefetch=on seq 32->32 stride 16->16
+Fault 5000: 0x5640a13c0000 (prefetched 0)
+Fault 5100: 0x5640a2a0a000 (prefetched 0)
+Policy: faults=128 hits=0 prefetched=451 drops=0 dup=0 dup_rate=0% qdepth=6 => prefetch=on seq 32->32 stride 16->16
+Fault 5200: 0x5640a02e1000 (prefetched 11)
+Policy: faults=128 hits=0 prefetched=538 drops=0 dup=0 dup_rate=0% qdepth=1 => prefetch=on seq 32->32 stride 16->16
+Fault 5300: 0x5640a351b000 (prefetched 2)
+Policy: faults=128 hits=0 prefetched=531 drops=0 dup=0 dup_rate=0% qdepth=0 => prefetch=on seq 32->32 stride 16->16
+Fault 5400: 0x5640a0721000 (prefetched 2)
+Fault 5500: 0x7fba547c0000 (prefetched 32)
+Policy: faults=128 hits=0 prefetched=608 drops=0 dup=0 dup_rate=0% qdepth=2 => prefetch=on seq 32->32 stride 16->16
+Fault 5600: 0x5640a21df000 (prefetched 12)
+Policy: faults=128 hits=0 prefetched=620 drops=0 dup=0 dup_rate=0% qdepth=0 => prefetch=on seq 32->32 stride 16->16
+Fault 5700: 0x56409ff6f000 (prefetched 1)
+Policy: faults=128 hits=0 prefetched=459 drops=0 dup=0 dup_rate=0% qdepth=29 => prefetch=on seq 32->32 stride 16->16
+Fault 5800: 0x5640a48de000 (prefetched 4)
+Enqueue: 5268 calls, 9.2 ms on fault path, mean depth 0, dedup=linear
+Prefetch stats: 5867 faults, 47441 prefetched, 0 hits (0% hit rate)
+Total pages served: 52805
+Prefetch duplicates skipped: 65
